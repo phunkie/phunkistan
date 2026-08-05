@@ -15,9 +15,9 @@ namespace Phunkie\Stan\Check;
 
 use PhpParser\Error;
 use PhpParser\Parser;
-use PhpParser\ParserFactory;
 use Phunkie\Stan\Diagnostic\Diagnostic;
 use Phunkie\Stan\Diagnostic\Span;
+use Phunkie\Stan\Source\OpenedSource;
 use Phunkie\Stan\Source\OpeningTag;
 use Phunkie\Stan\Source\Source;
 
@@ -34,14 +34,14 @@ final class SyntaxCheck
     public const CODE = 'E0001';
     public const CATEGORY = 'SYNTAX ERROR';
 
-    private readonly Parser $parser;
-
-    private readonly OpeningTag $openingTag;
-
-    public function __construct()
-    {
-        $this->parser = (new ParserFactory())->createForNewestSupportedVersion();
-        $this->openingTag = new OpeningTag();
+    /**
+     * @param Parser     $parser     Parser deciding which PHP is accepted
+     * @param OpeningTag $openingTag Opens a source that did not open itself
+     */
+    public function __construct(
+        private readonly Parser $parser,
+        private readonly OpeningTag $openingTag,
+    ) {
     }
 
     /**
@@ -54,12 +54,12 @@ final class SyntaxCheck
     public function on(Source $source): array
     {
         $code = $source->read();
-        $tagged = $this->openingTag->ensure($code);
+        $opened = $this->openingTag->open($code);
 
         try {
-            $this->parser->parse($tagged);
+            $this->parser->parse($opened->text());
         } catch (Error $error) {
-            return [$this->diagnose($error, $source, $code, $tagged, $this->openingTag->columnOffsetIn($code))];
+            return [$this->diagnose($error, $source, $code, $opened)];
         }
 
         return [];
@@ -68,20 +68,40 @@ final class SyntaxCheck
     /**
      * Turns a parser's complaint into a position the reader recognises.
      *
-     * Opening the tag pushed the first line sideways and no line down, so that
-     * is the whole of the correction: a column on line one, and nothing else.
+     * The offset is asked for rather than the line and column, because it is
+     * the one number both are derived from and the only one that survives a
+     * tag being inserted without needing a rule of its own.
      */
-    private function diagnose(Error $error, Source $source, string $code, string $tagged, int $columnOffset): Diagnostic
+    private function diagnose(Error $error, Source $source, string $code, OpenedSource $opened): Diagnostic
     {
-        $line = $error->getStartLine();
-        $column = $error->hasColumnInfo() ? $error->getStartColumn($tagged) : 1;
-
         return new Diagnostic(
             self::CODE,
             self::CATEGORY,
             $error->getRawMessage(),
-            new Span($source->relativePath, $line, max(1, $column - ($line === 1 ? $columnOffset : 0))),
+            new Span($source->relativePath, ...$this->placeOf($error, $opened)),
             $code
         );
+    }
+
+    /**
+     * Where the parser says it stopped.
+     *
+     * An error that kept no offset still knows its line, and a whole line is a
+     * better answer than a confident wrong column.
+     *
+     * @return array{int, int}
+     */
+    private function placeOf(Error $error, OpenedSource $opened): array
+    {
+        $attributes = $error->getAttributes();
+        $offset = $attributes['startFilePos'] ?? -1;
+
+        if (!is_int($offset) || $offset < 0) {
+            return [max(1, $error->getStartLine()), 1];
+        }
+
+        $position = $opened->positionOf($offset);
+
+        return [$position->line, $position->column];
     }
 }

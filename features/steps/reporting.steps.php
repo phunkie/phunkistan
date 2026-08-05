@@ -40,6 +40,30 @@ then("it should have reported {string} at line {int}", function (string $path, i
     expect($this->output)->toContain(':' . $line . ':');
 });
 
+then("it should have said {string}", function (string $message) {
+    expect($this->output)->toContain($message);
+});
+
+// The caret is counted in characters, so it lines up under what the reader can
+// see rather than under the bytes it happens to take to store it.
+then("the caret should sit under the {string}", function (string $character) {
+    $lines = explode("\n", $this->output);
+
+    foreach ($lines as $index => $line) {
+        if (!str_contains($line, '^')) {
+            continue;
+        }
+
+        $above = $lines[$index - 1];
+
+        expect(mb_strpos($line, '^'))->toBe(mb_strpos($above, $character));
+
+        return;
+    }
+
+    throw new RuntimeException('The report drew no caret at all.');
+});
+
 then("it should have shown me the line I wrote", function () {
     expect($this->output)->toContain('$todo = ;');
     expect($this->output)->toContain('^');

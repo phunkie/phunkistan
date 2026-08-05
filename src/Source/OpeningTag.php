@@ -29,34 +29,23 @@ final class OpeningTag
     public const TAG = '<?php ';
 
     /**
-     * Adds the opening tag where the source has none.
+     * Opens a source, and remembers what that cost.
+     *
+     * The offset is handed to the result rather than back to the caller, so
+     * there is no way to open a source and then forget to correct a position
+     * taken from it.
      *
      * @param string $source Source as the reader wrote it
      *
-     * @return string The same source, guaranteed to open a PHP tag
+     * @return OpenedSource The source a parser can read, and where things are in it
      */
-    public function ensure(string $source): string
+    public function open(string $source): OpenedSource
     {
         if ($this->isOpenedBy($source)) {
-            return $source;
+            return new OpenedSource($source, 0);
         }
 
-        return self::TAG . $source;
-    }
-
-    /**
-     * How far the first line was pushed along by opening the tag.
-     *
-     * Only the first line moves, and only sideways, so this is all a position
-     * needs to be turned back into one the reader recognises.
-     *
-     * @param string $source Source as the reader wrote it
-     *
-     * @return int Columns added to line one, zero where the source opened itself
-     */
-    public function columnOffsetIn(string $source): int
-    {
-        return $this->isOpenedBy($source) ? 0 : strlen(self::TAG);
+        return new OpenedSource(self::TAG . $source, strlen(self::TAG));
     }
 
     private function isOpenedBy(string $source): bool

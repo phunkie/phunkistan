@@ -9,7 +9,9 @@
  * file that was distributed with this source code.
  */
 
+use PhpParser\ParserFactory;
 use Phunkie\Stan\Check\SyntaxCheck;
+use Phunkie\Stan\Source\OpeningTag;
 use Phunkie\Stan\Source\Source;
 
 describe("SyntaxCheck", function () {
@@ -18,7 +20,12 @@ describe("SyntaxCheck", function () {
         file_put_contents($file, $code);
 
         try {
-            return (new SyntaxCheck())->on(new Source($file, "src/Todo.phunkie"));
+            $check = new SyntaxCheck(
+                (new ParserFactory())->createForNewestSupportedVersion(),
+                new OpeningTag()
+            );
+
+            return $check->on(new Source($file, "src/Todo.phunkie"));
         } finally {
             unlink($file);
         }

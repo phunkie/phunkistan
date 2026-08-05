@@ -24,7 +24,7 @@ use JsonException;
  * happens here rather than anywhere earlier: a `Span` means what a person
  * means by it, everywhere else in this codebase.
  */
-final class JsonRenderer
+final class JsonRenderer implements Renderer
 {
     private const SOURCE = 'phunkistan';
 

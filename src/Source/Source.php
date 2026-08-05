@@ -35,19 +35,26 @@ final class Source
     /**
      * Reads the source in full.
      *
-     * A source that cannot be read comes back empty rather than throwing. The
-     * file was there when the tree was walked, so its disappearing since is a
-     * race with something else, and refusing to check the rest of a project
-     * over it would be the worse answer.
+     * A file that cannot be read is not a file with nothing in it. Answering
+     * with an empty string would make it parse, and an unreadable source would
+     * then be reported as faultless, which is the one answer nobody can act on.
      *
-     * @return string The file's contents, or an empty string if it cannot be read
+     * @throws UnreadablePath If the file has gone, or cannot be opened
+     *
+     * @return string The file's contents
      */
     public function read(): string
     {
         if (!is_readable($this->path)) {
-            return '';
+            throw UnreadablePath::notFound($this->relativePath);
         }
 
-        return (string) file_get_contents($this->path);
+        $contents = file_get_contents($this->path);
+
+        if ($contents === false) {
+            throw UnreadablePath::notFound($this->relativePath);
+        }
+
+        return $contents;
     }
 }

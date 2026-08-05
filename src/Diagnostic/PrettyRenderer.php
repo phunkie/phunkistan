@@ -21,15 +21,18 @@ namespace Phunkie\Stan\Diagnostic;
  * message everyone else gets rather than a stripped one. That also makes the
  * output safe to snapshot, which is how the layout stays still.
  */
-final class PrettyRenderer
+final class PrettyRenderer implements Renderer
 {
-    private const WIDTH = 76;
+    public const WIDTH = 76;
 
-    private readonly SourceFrame $sourceFrame;
-
-    public function __construct()
-    {
-        $this->sourceFrame = new SourceFrame();
+    /**
+     * @param SourceFrame $sourceFrame Draws the reader's own code under the headline
+     * @param int         $width       Columns the banner rule is drawn to
+     */
+    public function __construct(
+        private readonly SourceFrame $sourceFrame = new SourceFrame(),
+        private readonly int $width = self::WIDTH,
+    ) {
     }
 
     /**
@@ -81,7 +84,7 @@ final class PrettyRenderer
     {
         $left = sprintf('── %s ', $diagnostic->category);
         $right = sprintf(' %s ──', $diagnostic->span);
-        $fill = max(1, self::WIDTH - mb_strlen($left) - mb_strlen($right));
+        $fill = max(1, $this->width - mb_strlen($left) - mb_strlen($right));
 
         return $left . str_repeat('─', $fill) . $right;
     }

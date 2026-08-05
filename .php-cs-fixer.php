@@ -13,7 +13,8 @@ use PhpCsFixer\Config;
 use PhpCsFixer\Finder;
 
 $finder = Finder::create()
-  ->exclude(['vendor', 'bin'])
+  ->exclude(['vendor'])
+  ->name('phunkistan')
   ->in(__DIR__);
 
 $rules = [
