@@ -20,6 +20,8 @@ use Phunkie\Stan\Diagnostic\Span;
 use Phunkie\Stan\Source\OpenedSource;
 use Phunkie\Stan\Source\OpeningTag;
 use Phunkie\Stan\Source\Source;
+use Phunkie\Stan\Type\Notation;
+use Phunkie\Stan\Type\TypeSyntaxError;
 
 /**
  * Reads a source and reports where it stopped making sense.
@@ -32,15 +34,18 @@ use Phunkie\Stan\Source\Source;
 final class SyntaxCheck
 {
     public const CODE = 'E0001';
+    public const NOTATION_CODE = 'E0003';
     public const CATEGORY = 'SYNTAX ERROR';
 
     /**
      * @param Parser     $parser     Parser deciding which PHP is accepted
      * @param OpeningTag $openingTag Opens a source that did not open itself
+     * @param Notation   $notation   Reads phunkie's own notation out of the source
      */
     public function __construct(
         private readonly Parser $parser,
         private readonly OpeningTag $openingTag,
+        private readonly Notation $notation = new Notation(),
     ) {
     }
 
@@ -55,14 +60,41 @@ final class SyntaxCheck
     {
         $code = $source->read();
         $opened = $this->openingTag->open($code);
+        $read = $this->notation->readFrom($opened->text());
+
+        // Notation that could not be read stops here. Handing the rest to PHP
+        // as well would report the same mistake twice, once in phunkie's terms
+        // and once in PHP's, and the second is the one nobody can act on.
+        if ($read->hasErrors()) {
+            return array_map(
+                fn (TypeSyntaxError $error): Diagnostic => $this->notationDiagnostic($error, $source, $code, $opened),
+                $read->errors
+            );
+        }
 
         try {
-            $this->parser->parse($opened->text());
+            $this->parser->parse($read->php);
         } catch (Error $error) {
             return [$this->diagnose($error, $source, $code, $opened)];
         }
 
         return [];
+    }
+
+    /**
+     * A type expression the grammar could not read.
+     */
+    private function notationDiagnostic(TypeSyntaxError $error, Source $source, string $code, OpenedSource $opened): Diagnostic
+    {
+        $position = $opened->positionOf($error->offset);
+
+        return new Diagnostic(
+            self::NOTATION_CODE,
+            self::CATEGORY,
+            $error->getMessage(),
+            new Span($source->relativePath, $position->line, $position->column),
+            $code
+        );
     }
 
     /**

@@ -1,0 +1,29 @@
+{
+    "v": 1,
+    "offers": [
+        {
+            "id": "o_339cd0dc",
+            "kind": "generate",
+            "action": "create_steps",
+            "target": "features/syntax_errors.feature",
+            "data": {
+                "candidates": {
+                    "undefinedSteps": {
+                        "features/syntax_errors.feature": [
+                            {
+                                "keyword": "Then",
+                                "text": "it should have said \"Expected \\\",\\\" or \\\">\\\" between type arguments\""
+                            }
+                        ]
+                    },
+                    "missingSpecClasses": [],
+                    "missingStepClasses": [],
+                    "missingMockTypes": [],
+                    "undefinedMockInterfaceMethods": [],
+                    "undefinedClassMethods": [],
+                    "fakeableMethods": []
+                }
+            }
+        }
+    ]
+}
