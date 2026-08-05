@@ -1,5 +1,14 @@
 <?php
 
+/*
+ * This file is part of Phunkistan, a type checker for phunkie.
+ *
+ * (c) Marcello Duarte <marcello.duarte@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 $phunkistan = dirname(__DIR__, 2) . '/bin/phunkistan';
 
 beforeScenario(function () use ($phunkistan) {

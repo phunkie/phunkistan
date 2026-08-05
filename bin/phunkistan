@@ -1,6 +1,15 @@
 #!/usr/bin/env php
 <?php
 
+/*
+ * This file is part of Phunkistan, a type checker for phunkie.
+ *
+ * (c) Marcello Duarte <marcello.duarte@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 declare(strict_types=1);
 
 // Composer's bin proxy names the autoloader of the project that installed us,
@@ -21,21 +30,60 @@ foreach ($candidates as $autoload) {
     }
 }
 
+use Phunkie\Stan\Check\SyntaxCheck;
+use Phunkie\Stan\Diagnostic\JsonRenderer;
+use Phunkie\Stan\Diagnostic\PrettyRenderer;
 use Phunkie\Stan\Source\SourceTree;
 
-$path = $argv[1] ?? null;
+$arguments = array_slice($argv, 1);
+$format = 'pretty';
+$paths = [];
 
-if ($path === null) {
-    fwrite(STDERR, "usage: phunkistan <path>\n");
+foreach ($arguments as $argument) {
+    if (str_starts_with($argument, '--format=')) {
+        $format = substr($argument, strlen('--format='));
+
+        continue;
+    }
+
+    $paths[] = $argument;
+}
+
+if ($paths === []) {
+    fwrite(STDERR, "usage: phunkistan [--format=pretty|json] <path>\n");
 
     exit(2);
 }
 
-// Nothing is reported yet, because nothing is checked yet. Silence on a clean
-// run is the behaviour being pinned here: a checker that chatters when it has
-// found nothing trains you to stop reading it.
-foreach ((new SourceTree($path))->files() as $source) {
-    $source->read();
+if (!in_array($format, ['pretty', 'json'], true)) {
+    fwrite(STDERR, sprintf("phunkistan: unknown format \"%s\".\n", $format));
+
+    exit(2);
 }
 
-exit(0);
+$check = new SyntaxCheck();
+$diagnostics = [];
+
+foreach ($paths as $path) {
+    foreach ((new SourceTree($path))->files() as $source) {
+        $diagnostics = array_merge($diagnostics, $check->on($source));
+    }
+}
+
+// An editor wants its list either way, so json answers even when the answer is
+// that there is nothing wrong. A person reading a terminal does not: a checker
+// that chatters on a clean run trains you to stop reading it, and is then worth
+// nothing on the day it has something to say.
+if ($format === 'json') {
+    fwrite(STDOUT, (new JsonRenderer())->render($diagnostics) . "\n");
+
+    exit($diagnostics === [] ? 0 : 1);
+}
+
+if ($diagnostics === []) {
+    exit(0);
+}
+
+fwrite(STDOUT, (new PrettyRenderer())->render($diagnostics));
+
+exit(1);
