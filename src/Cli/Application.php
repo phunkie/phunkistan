@@ -22,6 +22,8 @@ use Phunkie\Stan\Diagnostic\Span;
 use Phunkie\Stan\Source\Source;
 use Phunkie\Stan\Source\Sources;
 use Phunkie\Stan\Source\UnreadablePath;
+use Phunkie\Stan\Watch\PollingWatcher;
+use Phunkie\Stan\Watch\Watcher;
 
 /**
  * Checking a path, from the outside.
@@ -47,10 +49,12 @@ final class Application
     public const UNREADABLE_CATEGORY = 'CANNOT READ';
 
     /**
-     * @param SyntaxCheck $check Check to run over every source
+     * @param SyntaxCheck $check   Check to run over every source
+     * @param Watcher     $watcher Notices sources being saved, under --watch
      */
     public function __construct(
         private readonly SyntaxCheck $check,
+        private readonly Watcher $watcher = new PollingWatcher(),
     ) {
     }
 
@@ -69,6 +73,7 @@ final class Application
         $error ??= STDERR;
 
         $format = 'pretty';
+        $watching = false;
         $paths = [];
 
         foreach ($arguments as $argument) {
@@ -78,11 +83,17 @@ final class Application
                 continue;
             }
 
+            if ($argument === '--watch') {
+                $watching = true;
+
+                continue;
+            }
+
             $paths[] = $argument;
         }
 
         if ($paths === []) {
-            fwrite($error, "usage: phunkistan [--format=pretty|json] <path>\n");
+            fwrite($error, "usage: phunkistan [--watch] [--format=pretty|json] <path>\n");
 
             return self::MISUSED;
         }
@@ -95,18 +106,67 @@ final class Application
             return self::MISUSED;
         }
 
+        if ($watching) {
+            return $this->keepWatching($paths, $renderer, $format, $out);
+        }
+
         $diagnostics = $this->diagnose($paths);
-        $report = $renderer->render($diagnostics);
 
         // An editor wants its list either way, and an empty one is an answer. A
         // person reading a terminal does not: a checker that chatters on a
         // clean run trains you to stop reading it, and is then worth nothing on
         // the day it has something to say.
-        if ($report !== '') {
-            fwrite($out, $report . ($format === 'json' ? "\n" : ''));
-        }
+        $this->report($diagnostics, $renderer, $format, $out);
 
         return $diagnostics === [] ? self::OK : self::FOUND_PROBLEMS;
+    }
+
+    /**
+     * Checks now, and again every time a source is saved.
+     *
+     * Silence is right for a run that ends, where no news is good news. It is
+     * wrong here, where it cannot be told apart from a watcher that has died,
+     * so a clean pass says so.
+     *
+     * @param list<string>  $paths
+     * @param resource      $out
+     *
+     * @return int Never, in practice: a watch ends when the process is stopped
+     */
+    private function keepWatching(array $paths, Renderer $renderer, string $format, $out): int
+    {
+        $check = function () use ($paths, $renderer, $format, $out): void {
+            $diagnostics = $this->diagnose($paths);
+
+            $this->report($diagnostics, $renderer, $format, $out);
+
+            if ($diagnostics === []) {
+                fwrite($out, "No problems found.\n");
+            }
+        };
+
+        $check();
+
+        fwrite($out, sprintf("Watching %s. Press Ctrl+C to stop.\n", implode(', ', $paths)));
+
+        $this->watcher->watch($paths, $check);
+
+        return self::OK;
+    }
+
+    /**
+     * @param list<Diagnostic> $diagnostics
+     * @param resource         $out
+     */
+    private function report(array $diagnostics, Renderer $renderer, string $format, $out): void
+    {
+        $report = $renderer->render($diagnostics);
+
+        if ($report === '') {
+            return;
+        }
+
+        fwrite($out, $report . ($format === 'json' ? "\n" : ''));
     }
 
     /**

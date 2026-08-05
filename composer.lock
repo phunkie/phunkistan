@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "eb5f801602f6b5887c63920265945c30",
+    "content-hash": "f397445d038dc5f07594e96d38ea0868",
     "packages": [
         {
             "name": "nikic/php-parser",
@@ -720,16 +720,16 @@
         },
         {
             "name": "phpspec/phpspec",
-            "version": "9.0.0-beta.18",
+            "version": "9.x-dev",
             "source": {
                 "type": "git",
                 "url": "https://github.com/phpspec/phpspec.git",
-                "reference": "b18af63a28354547deddc74e98585cddf376a12d"
+                "reference": "12bd25d31280cd4103979c49bd794b593a47a593"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpspec/phpspec/zipball/b18af63a28354547deddc74e98585cddf376a12d",
-                "reference": "b18af63a28354547deddc74e98585cddf376a12d",
+                "url": "https://api.github.com/repos/phpspec/phpspec/zipball/12bd25d31280cd4103979c49bd794b593a47a593",
+                "reference": "12bd25d31280cd4103979c49bd794b593a47a593",
                 "shasum": ""
             },
             "require": {
@@ -813,9 +813,9 @@
             ],
             "support": {
                 "issues": "https://github.com/phpspec/phpspec/issues",
-                "source": "https://github.com/phpspec/phpspec/tree/9.0.0-beta.18"
+                "source": "https://github.com/phpspec/phpspec/tree/9.x"
             },
-            "time": "2026-08-03T16:43:14+00:00"
+            "time": "2026-08-05T15:16:37+00:00"
         },
         {
             "name": "phpstan/phpstan",
@@ -3138,7 +3138,7 @@
     "aliases": [],
     "minimum-stability": "dev",
     "stability-flags": {
-        "phpspec/phpspec": 10
+        "phpspec/phpspec": 20
     },
     "prefer-stable": true,
     "prefer-lowest": false,

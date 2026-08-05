@@ -33,6 +33,22 @@ final class Source
     }
 
     /**
+     * What the source looks like right now, in one short string.
+     *
+     * Taken from the contents rather than the modification time, because
+     * `filemtime` has one second resolution: two saves inside the same second
+     * are indistinguishable by time, and the second one would be missed.
+     *
+     * @return string A fingerprint, or an empty string if the file cannot be read
+     */
+    public function fingerprint(): string
+    {
+        $hash = is_readable($this->path) ? md5_file($this->path) : false;
+
+        return $hash === false ? '' : $hash;
+    }
+
+    /**
      * Reads the source in full.
      *
      * A file that cannot be read is not a file with nothing in it. Answering

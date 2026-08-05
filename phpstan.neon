@@ -2,3 +2,10 @@ parameters:
     level: 6
     paths:
         - src
+    ignoreErrors:
+        # A watch does not finish. The loop is infinite because that is what
+        # watching means: it ends when the process is stopped, and there is no
+        # condition that could say so more honestly.
+        -
+            identifier: while.alwaysTrue
+            path: src/Watch/PollingWatcher.php

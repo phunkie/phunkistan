@@ -7,7 +7,9 @@ terms, at positions in the file you wrote. It does not read compiled PHP, so
 there is no generated line number to leak and no source map to keep honest.
 
 ```bash
-phunkistan src/phunkie
+phunkistan src/phunkie             # check once
+phunkistan --watch src/phunkie     # check again on every save
+phunkistan --format=json src/App.phunkie
 ```
 
 ## Status
