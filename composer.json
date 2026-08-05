@@ -1,0 +1,36 @@
+{
+    "name": "phunkie/phunkistan",
+    "description": "A type checker for phunkie",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Marcello Duarte",
+            "email": "marcello.duarte@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2 || ^8.3 || ^8.4 || ^8.5",
+        "nikic/php-parser": "^5.7"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpspec/phpspec": "9.x@beta",
+        "phpstan/phpstan": "^2.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Phunkie\\Stan\\": "src/"
+        }
+    },
+    "bin": [
+        "bin/phunkistan"
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "platform": {
+            "php": "8.2.0"
+        }
+    }
+}

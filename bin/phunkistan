@@ -1,0 +1,26 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Composer's bin proxy names the autoloader of the project that installed us,
+// and it is asked first because it is the only one that is right in every case.
+// __DIR__ resolves through a symlink, so a path repository installed with
+// symlink: true would otherwise find this package's own vendor rather than the
+// project's, and check the sources of whatever happens to be sitting next door.
+$candidates = [
+    $GLOBALS['_composer_autoload_path'] ?? null,
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+foreach ($candidates as $autoload) {
+    if ($autoload !== null && file_exists($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+
+fwrite(STDERR, "phunkistan has no checks yet. See PHUNKISTAN_TODO.md.\n");
+
+exit(0);
