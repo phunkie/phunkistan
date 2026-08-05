@@ -81,6 +81,7 @@ final class Notation
                 $types[] = $this->parser->type($cursor);
             } catch (TypeSyntaxError $error) {
                 $read = $error->offset;
+                $error = new TypeSyntaxError($error->getMessage(), $error->offset, $at);
 
                 // A name followed by `<` is only notation if it reads as a
                 // type. `MAX < 3` is a comparison, and backing off leaves it to
@@ -89,6 +90,16 @@ final class Notation
                 // read it is a mistake in the notation. A bracket group was
                 // recognised by one character, so it has to be asked again.
                 $errors[] = $error;
+
+                continue;
+            }
+
+            // A completed type followed by another `>` means the bracket just
+            // consumed belonged to a shift, not to this type: `MIN < MAX >> 2`
+            // reads as `MIN<MAX>` and is arithmetic. Left alone, valid PHP gets
+            // quietly rewritten and a type nobody wrote is recorded.
+            if ($this->followedByBracket($source, $cursor->offset())) {
+                array_pop($types);
 
                 continue;
             }
@@ -243,6 +254,14 @@ final class Notation
         }
 
         return $at;
+    }
+
+    /**
+     * Whether the next thing along is a closing bracket this type did not want.
+     */
+    private function followedByBracket(string $source, int $at): bool
+    {
+        return preg_match('/^\s*>/', substr($source, $at, 8)) === 1;
     }
 
     /**

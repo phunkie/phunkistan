@@ -69,6 +69,14 @@ describe("Notation", function () {
     // Arithmetic that looks like notation is not judged here. This object
     // reports what it could not read, and whether that was ever notation is a
     // question only PHP can answer, so the checker asks it.
+    // Valid PHP, and the bracket that closed the type belonged to the shift.
+    // Read as notation it becomes `MIN<MAX>`, a type nobody wrote, and the
+    // shift is quietly erased from a source that was correct.
+    it("does not take a shift's bracket for the end of a type", function () use ($read, $types) {
+        expect($types('$a = MIN < MAX >> 2;'))->toBe('');
+        expect(count($read('$a = MIN < MAX >> 2;')->errors))->toBe(0);
+    });
+
     it("has nothing to read where no name stands in front of the bracket", function () use ($read) {
         foreach (['$b = 8 >> 2;', '$s = $a < $b;'] as $php) {
             expect(count($read($php)->errors))->toBe(0);

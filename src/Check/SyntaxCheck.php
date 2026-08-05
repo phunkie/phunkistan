@@ -62,47 +62,47 @@ final class SyntaxCheck
         $opened = $this->openingTag->open($code);
         $read = $this->notation->readFrom($opened->text());
 
-        // Notation that could not be read stops here. Handing the rest to PHP
-        // as well would report the same mistake twice, once in phunkie's terms
-        // and once in PHP's, and the second is the one nobody can act on.
-        //
-        // Unless PHP is happy with the source exactly as written, in which case
-        // what could not be read as a type was never a type: `MAX<MIN` is a
-        // comparison. PHP is the only thing that knows this for certain, and
-        // asking it is cheaper and more honest than guessing from the shape of
-        // what follows the bracket.
-        if ($read->hasErrors() && !$this->parses($opened->text())) {
-            return array_map(
-                fn (TypeSyntaxError $error): Diagnostic => $this->notationDiagnostic($error, $source, $code, $opened),
-                $read->errors
-            );
-        }
-
+        // One parse decides everything. PHP is asked about the source with the
+        // notation it could read taken out, so where it gives up is directly
+        // comparable with where the grammar gave up.
         try {
             $this->parser->parse($read->php);
         } catch (Error $error) {
-            return [$this->diagnose($error, $source, $code, $opened)];
+            return [$this->blame($error, $read->errors, $source, $code, $opened)];
         }
 
+        // PHP is content, so nothing that failed to read as a type ever was
+        // one: `MAX < 3` is a comparison. Asking per suspect rather than per
+        // file is what stops a mistake on one line being blamed on a
+        // comparison on another.
         return [];
     }
 
     /**
-     * Whether PHP accepts a source exactly as it stands.
+     * Decides whose complaint to report, phunkie's or PHP's.
      *
-     * Only ever asked of a source that already failed to read, so a file with
-     * nothing wrong with it never pays for this.
+     * @param list<TypeSyntaxError> $suspects
      */
-    private function parses(string $code): bool
+    private function blame(Error $error, array $suspects, Source $source, string $code, OpenedSource $opened): Diagnostic
     {
-        try {
-            $this->parser->parse($code);
-        } catch (Error) {
-            return false;
+        $offset = $this->offsetOf($error);
+
+        foreach ($suspects as $suspect) {
+            if ($offset === null || $suspect->covers($offset)) {
+                return $this->notationDiagnostic($suspect, $source, $code, $opened);
+            }
         }
 
-        return true;
+        return $this->diagnose($error, $source, $code, $opened);
     }
+
+    private function offsetOf(Error $error): ?int
+    {
+        $offset = $error->getAttributes()['startFilePos'] ?? -1;
+
+        return is_int($offset) && $offset >= 0 ? $offset : null;
+    }
+
 
     /**
      * A type expression the grammar could not read.
@@ -148,10 +148,9 @@ final class SyntaxCheck
      */
     private function placeOf(Error $error, OpenedSource $opened): array
     {
-        $attributes = $error->getAttributes();
-        $offset = $attributes['startFilePos'] ?? -1;
+        $offset = $this->offsetOf($error);
 
-        if (!is_int($offset) || $offset < 0) {
+        if ($offset === null) {
             return [max(1, $error->getStartLine()), 1];
         }
 

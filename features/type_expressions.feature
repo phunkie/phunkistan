@@ -76,6 +76,7 @@ Feature: Developer writes phunkie notation and the checker understands it
     Given there is a source "src/Maths.phunkie" containing:
       """
       $bits = 8 >> 2;
+      $shifted = MIN < MAX >> 2;
       $smaller = $a < $b;
       $capped = MAX < 3;
       $tight = MAX<MIN;
