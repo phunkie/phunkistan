@@ -9,6 +9,8 @@
  * file that was distributed with this source code.
  */
 
+use function PhpSpec\attach;
+
 $phunkistan = dirname(__DIR__, 2) . '/bin/phunkistan';
 
 beforeScenario(function () use ($phunkistan) {
@@ -28,6 +30,11 @@ beforeScenario(function () use ($phunkistan) {
 
         $this->output = implode("\n", $lines);
         $this->exitCode = $exitCode;
+
+        // What the binary said is the most useful thing there is when a step
+        // fails, and it is the one thing phpspec cannot see: it went into a
+        // variable only this closure knows about.
+        attach('phunkistan output', $this->output);
     };
 });
 

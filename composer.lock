@@ -724,12 +724,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/phpspec/phpspec.git",
-                "reference": "12bd25d31280cd4103979c49bd794b593a47a593"
+                "reference": "00dc1cc764c87e0417903888a2d0925dddfa26c3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpspec/phpspec/zipball/12bd25d31280cd4103979c49bd794b593a47a593",
-                "reference": "12bd25d31280cd4103979c49bd794b593a47a593",
+                "url": "https://api.github.com/repos/phpspec/phpspec/zipball/00dc1cc764c87e0417903888a2d0925dddfa26c3",
+                "reference": "00dc1cc764c87e0417903888a2d0925dddfa26c3",
                 "shasum": ""
             },
             "require": {
@@ -815,7 +815,7 @@
                 "issues": "https://github.com/phpspec/phpspec/issues",
                 "source": "https://github.com/phpspec/phpspec/tree/9.x"
             },
-            "time": "2026-08-05T15:16:37+00:00"
+            "time": "2026-08-05T20:12:15+00:00"
         },
         {
             "name": "phpstan/phpstan",

@@ -9,6 +9,8 @@
  * file that was distributed with this source code.
  */
 
+use function PhpSpec\attach;
+
 $phunkistan = dirname(__DIR__, 2) . '/bin/phunkistan';
 
 /**
@@ -27,6 +29,11 @@ $eventually = function (Closure $condition, float $seconds = 10.0): bool {
         usleep(50_000);
     } while (microtime(true) < $deadline);
 
+    // The helper is the only thing that knows how long it waited, and returning
+    // a bool throws that away. Said here rather than at each call site, so every
+    // caller is served and none of them has to remember.
+    attach('waited', sprintf('%.1f seconds, and the condition never held.', $seconds));
+
     return false;
 };
 
@@ -42,6 +49,11 @@ $write = function (string $workspace, string $path, string $source): void {
 
 $start = function (object $world, string $path) use ($phunkistan): void {
     $world->watchLog = $world->workspace . '/watch.log';
+
+    // Registered when the watch starts and read only if a step fails, so it
+    // holds everything the watcher printed by then rather than the nothing it
+    // has printed at this moment.
+    attach('watch log', fn () => is_file($world->watchLog) ? (string) file_get_contents($world->watchLog) : '(no log)');
 
     // The array form of proc_open runs the binary directly, with no shell in
     // between, so terminating the process afterwards terminates the watcher
