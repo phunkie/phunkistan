@@ -29,22 +29,6 @@ use PhpToken;
  */
 final class Notation
 {
-    /**
-     * Every token PHP may hand back for something written where a type name
-     * belongs. A qualified name arrives whole, and several of phunkie's likelier
-     * type names are words PHP keeps for itself.
-     */
-    private const NAMES = [
-        T_STRING,
-        T_ARRAY,
-        T_CALLABLE,
-        T_LIST,
-        T_STATIC,
-        T_NAME_QUALIFIED,
-        T_NAME_FULLY_QUALIFIED,
-        T_NAME_RELATIVE,
-    ];
-
     public function __construct(
         private readonly TypeParser $parser = new TypeParser(),
     ) {
@@ -83,22 +67,21 @@ final class Notation
                 $read = $error->offset;
                 $error = new TypeSyntaxError($error->getMessage(), $error->offset, $at);
 
-                // A name followed by `<` is only notation if it reads as a
-                // type. `MAX < 3` is a comparison, and backing off leaves it to
-                // PHP, which is the one that should have an opinion about it.
-                // A callable was recognised by where it sits, so a failure to
-                // read it is a mistake in the notation. A bracket group was
-                // recognised by one character, so it has to be asked again.
+                // Reported as a suspicion, not a verdict. Whether this was
+                // broken notation or a comparison that was never notation is
+                // settled by the checker, which can ask PHP where it gave up on
+                // the same source and see whether the two agree.
                 $errors[] = $error;
 
                 continue;
             }
 
-            // A completed type followed by another `>` means the bracket just
-            // consumed belonged to a shift, not to this type: `MIN < MAX >> 2`
-            // reads as `MIN<MAX>` and is arithmetic. Left alone, valid PHP gets
-            // quietly rewritten and a type nobody wrote is recorded.
-            if ($this->followedByBracket($source, $cursor->offset())) {
+            // What follows a completed type is what settles whether it was one.
+            // A shift's bracket closes a type that was never opened, and an
+            // array key or a match arm reads as a callable that nothing could
+            // ever be declared as. Both are arithmetic wearing the notation's
+            // shape, and both are only visible from the far end of it.
+            if (!$this->isFollowedProperly($source, $cursor->offset(), end($types))) {
                 array_pop($types);
 
                 continue;
@@ -122,9 +105,10 @@ final class Notation
      * Every place the notation appears, as how much of it PHP should keep, what
      * to blank from, and where the type itself begins.
      *
-     * A named type keeps its name, so `ImmList<Int>` leaves `ImmList` for PHP
-     * to enforce and only the arguments go. A callable type leaves nothing, so
-     * it goes whole, and its colon with it.
+     * A named type PHP could enforce keeps its name, so `ImmList<Int>` leaves
+     * `ImmList` behind and only the arguments go. Anything PHP could not accept
+     * as a type name goes whole, and so does a callable type, and a return
+     * type's colon goes with it.
      *
      * @param list<PhpToken> $tokens
      *
@@ -143,17 +127,16 @@ final class Notation
             // together with whatever follows, so an empty group arrives as
             // `<>`, which is the not-equal operator, and never as a bracket at
             // all.
-            if ($token->is(self::NAMES) && $next < $count && str_starts_with($tokens[$next]->text, '<')) {
-                $found[] = [strlen($token->text), $token->pos, $token->pos];
+            if ($this->readsAsAName($token) && $next < $count && str_starts_with($tokens[$next]->text, '<')) {
+                $keep = $this->keepableLength($token);
+
+                $found[] = [$keep, $keep === 0 ? $this->blankFrom($tokens, $at) : $token->pos, $token->pos];
 
                 continue;
             }
 
             if ($this->opensACallableType($tokens, $at)) {
-                $before = $this->previous($tokens, $at);
-                $from = $before !== null && $tokens[$before]->text === ':' ? $tokens[$before]->pos : $token->pos;
-
-                $found[] = [0, $from, $token->pos];
+                $found[] = [0, $this->blankFrom($tokens, $at), $token->pos];
             }
         }
 
@@ -161,12 +144,66 @@ final class Notation
     }
 
     /**
-     * Whether a parenthesis begins a callable type rather than a call, an
-     * arrow function or a match arm.
+     * Whether a token reads as a name in this grammar.
      *
-     * All three of those have something in front of the bracket: a name, a
-     * variable, or `fn`. A type has a place where a type belongs, which is
-     * after `(`, `,` or `:`, and nothing else.
+     * Asked of the text rather than of the token's kind, because PHP has around
+     * forty words it keeps for itself and `Function<A, B>` and `Try<A>` are not
+     * unlikely names in a functional language. Enumerating the ones it would be
+     * a shame to lose is a list that is never finished; asking the grammar what
+     * a name is has no list in it at all.
+     */
+    private function readsAsAName(PhpToken $token): bool
+    {
+        return preg_match('/^[A-Za-z_\x80-\xff\\\\][A-Za-z0-9_\x80-\xff\\\\]*$/', $token->text) === 1;
+    }
+
+    /**
+     * How much of a named type is worth leaving for PHP.
+     *
+     * A name PHP would accept as a class stays, so `ImmList<Int>` still tells
+     * PHP there is an `ImmList` and lets it say when there is not. A name PHP
+     * keeps for itself goes with its arguments, because `Function` alone is not
+     * a type PHP will read however few brackets follow it.
+     *
+     * The token's kind decides this, which is safe where deciding detection by
+     * it was not: being wrong here means blanking more than necessary, and
+     * being wrong there meant missing notation entirely.
+     */
+    private function keepableLength(PhpToken $token): int
+    {
+        $names = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE];
+
+        return $token->is($names) ? strlen($token->text) : 0;
+    }
+
+    /**
+     * Where blanking should start for a type that leaves nothing behind.
+     *
+     * A return type's colon has to go with it. `function f():  {` is not PHP,
+     * where `function f()    {` is, and PHP has nothing left to enforce either
+     * way once the name it would have enforced is gone.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function blankFrom(array $tokens, int $at): int
+    {
+        $before = $this->previous($tokens, $at);
+
+        if ($before !== null && $tokens[$before]->text === ':') {
+            return $tokens[$before]->pos;
+        }
+
+        return $tokens[$at]->pos;
+    }
+
+    /**
+     * Whether a parenthesis might begin a callable type.
+     *
+     * Only might: what is in front of a bracket cannot tell a type from a call,
+     * an arrow function or a match arm, and guessing from it both missed a
+     * callable property and reported a parenthesised array key. What settles it
+     * is what comes after the whole type, which is not known until it has been
+     * read, so the question is asked again once it has.
      *
      * @param list<PhpToken> $tokens
      */
@@ -175,12 +212,6 @@ final class Notation
         $close = $this->closeOfGroup($tokens, $at);
 
         if ($close === null) {
-            return false;
-        }
-
-        $before = $this->previous($tokens, $at);
-
-        if ($before === null || !in_array($tokens[$before]->text, ['(', ',', ':'], true)) {
             return false;
         }
 
@@ -257,11 +288,25 @@ final class Notation
     }
 
     /**
-     * Whether the next thing along is a closing bracket this type did not want.
+     * Whether what comes after a type is something a type may be followed by.
+     *
+     * A callable type is only ever declared somewhere a declaration can go, so
+     * a variable, a reference, a variadic, a body or a semicolon follows it.
+     * `[1, (FOO) => BAR]` and a match arm read as callables and are followed by
+     * a comma, which no declaration ever is.
+     *
+     * A named type is asked only whether another `>` follows, which would mean
+     * the bracket it just consumed belonged to a shift: `MIN < MAX >> 2`.
      */
-    private function followedByBracket(string $source, int $at): bool
+    private function isFollowedProperly(string $source, int $at, Type|false $type): bool
     {
-        return preg_match('/^\s*>/', substr($source, $at, 8)) === 1;
+        $rest = substr($source, $at, 8);
+
+        if ($type instanceof CallableType) {
+            return preg_match('/^\s*[$&.{;]/', $rest) === 1;
+        }
+
+        return preg_match('/^\s*>/', $rest) !== 1;
     }
 
     /**

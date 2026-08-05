@@ -50,6 +50,50 @@ Feature: Developer writes phunkie notation and the checker understands it
     Then it should have passed
     And it should have said nothing
 
+  # A callable type is declared wherever a declaration goes, and is recognised
+  # by what follows it rather than by what sits in front, so a comment or an
+  # attribute in between makes no difference.
+  Scenario: A callable type in every position it may appear
+    Given there is a source "src/Registry.phunkie" containing:
+      """
+      interface Matching
+      {
+          public function matcher(): (string) => bool;
+      }
+
+      class Registry
+      {
+          private (string) => bool $matches;
+
+          public function __construct(private (string) => bool $also)
+          {
+          }
+
+          public function keep(#[Att] (string) => bool $m, ImmList<String> $names): ImmList<String>
+          {
+              return $names;
+          }
+      }
+      """
+    When I check "src"
+    Then it should have passed
+    And it should have said nothing
+
+  # PHP keeps around forty words for itself, and several of them are names a
+  # functional language wants. Enumerating the ones worth keeping is a list that
+  # is never finished.
+  Scenario: A type may be named with a word PHP keeps for itself
+    Given there is a source "src/Words.phunkie" containing:
+      """
+      function f(Function<Int, String> $x): Try<Int>
+      {
+          return $x;
+      }
+      """
+    When I check "src"
+    Then it should have passed
+    And it should have said nothing
+
   Scenario: A class declares the parameters it takes
     Given there is a source "src/Stack.phunkie" containing:
       """
@@ -86,6 +130,8 @@ Feature: Developer writes phunkie notation and the checker understands it
       $unequal = FOO<>$b;
       $keyed = [1, (2) => 3];
       $matched = match ($x) { 1, (2) => 3, default => 4 };
+      $named = [OPEN => 1, (SHUT) => SHUT, 3 => 2];
+      $arm = match ($y) { 1, (FOO) => BAR, default => 4 };
       """
     When I check "src"
     Then it should have passed
