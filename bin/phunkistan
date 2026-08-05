@@ -21,6 +21,21 @@ foreach ($candidates as $autoload) {
     }
 }
 
-fwrite(STDERR, "phunkistan has no checks yet. See PHUNKISTAN_TODO.md.\n");
+use Phunkie\Stan\Source\SourceTree;
+
+$path = $argv[1] ?? null;
+
+if ($path === null) {
+    fwrite(STDERR, "usage: phunkistan <path>\n");
+
+    exit(2);
+}
+
+// Nothing is reported yet, because nothing is checked yet. Silence on a clean
+// run is the behaviour being pinned here: a checker that chatters when it has
+// found nothing trains you to stop reading it.
+foreach ((new SourceTree($path))->files() as $source) {
+    $source->read();
+}
 
 exit(0);
