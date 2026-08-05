@@ -29,6 +29,22 @@ use PhpToken;
  */
 final class Notation
 {
+    /**
+     * Every token PHP may hand back for something written where a type name
+     * belongs. A qualified name arrives whole, and several of phunkie's likelier
+     * type names are words PHP keeps for itself.
+     */
+    private const NAMES = [
+        T_STRING,
+        T_ARRAY,
+        T_CALLABLE,
+        T_LIST,
+        T_STATIC,
+        T_NAME_QUALIFIED,
+        T_NAME_FULLY_QUALIFIED,
+        T_NAME_RELATIVE,
+    ];
+
     public function __construct(
         private readonly TypeParser $parser = new TypeParser(),
     ) {
@@ -48,25 +64,36 @@ final class Notation
         $errors = [];
         $blanked = $source;
 
-        foreach ($this->notationIn($tokens) as [$keep, $from, $at, $certain]) {
+        $read = 0;
+
+        foreach ($this->notationIn($tokens) as [$keep, $from, $at]) {
+            // A nested type is already whole in the type that contains it, so
+            // its inner names are candidates that have been read once. Reading
+            // them again says the same thing twice, and when the notation is
+            // broken it says the same mistake twice.
+            if ($at < $read) {
+                continue;
+            }
+
             $cursor = new Cursor(substr($source, $at), $at);
 
             try {
                 $types[] = $this->parser->type($cursor);
             } catch (TypeSyntaxError $error) {
+                $read = $error->offset;
+
                 // A name followed by `<` is only notation if it reads as a
                 // type. `MAX < 3` is a comparison, and backing off leaves it to
                 // PHP, which is the one that should have an opinion about it.
                 // A callable was recognised by where it sits, so a failure to
                 // read it is a mistake in the notation. A bracket group was
                 // recognised by one character, so it has to be asked again.
-                if ($certain || $this->looksLikeNotation($source, $at)) {
-                    $errors[] = $error;
-                }
+                $errors[] = $error;
 
                 continue;
             }
 
+            $read = $cursor->offset();
             $blanked = $this->blank($blanked, $at + $keep, $cursor->offset());
 
             // A callable type leaves nothing behind for PHP to enforce, so the
@@ -90,7 +117,7 @@ final class Notation
      *
      * @param list<PhpToken> $tokens
      *
-     * @return list<array{int, int, int, bool}>
+     * @return list<array{int, int, int}>
      */
     private function notationIn(array $tokens): array
     {
@@ -105,8 +132,8 @@ final class Notation
             // together with whatever follows, so an empty group arrives as
             // `<>`, which is the not-equal operator, and never as a bracket at
             // all.
-            if ($token->is([T_STRING, T_ARRAY]) && $next < $count && str_starts_with($tokens[$next]->text, '<')) {
-                $found[] = [strlen($token->text), $token->pos, $token->pos, false];
+            if ($token->is(self::NAMES) && $next < $count && str_starts_with($tokens[$next]->text, '<')) {
+                $found[] = [strlen($token->text), $token->pos, $token->pos];
 
                 continue;
             }
@@ -115,7 +142,7 @@ final class Notation
                 $before = $this->previous($tokens, $at);
                 $from = $before !== null && $tokens[$before]->text === ':' ? $tokens[$before]->pos : $token->pos;
 
-                $found[] = [0, $from, $token->pos, true];
+                $found[] = [0, $from, $token->pos];
             }
         }
 
@@ -216,29 +243,6 @@ final class Notation
         }
 
         return $at;
-    }
-
-    /**
-     * Whether what was written was meant to be a type at all.
-     *
-     * What follows the bracket decides it. A type argument begins with a name,
-     * a parenthesis or a hole, and an empty group begins by closing. A
-     * comparison has a value there instead, so `MAX < 3` is arithmetic and
-     * `ImmList<Int $xs` is notation with a bracket missing.
-     *
-     * Getting this wrong in one direction reports arithmetic as a type error,
-     * and in the other lets broken notation reach PHP, which then says
-     * something true about tokens and useless about types.
-     */
-    private function looksLikeNotation(string $source, int $at): bool
-    {
-        $bracket = strpos($source, '<', $at);
-
-        if ($bracket === false) {
-            return false;
-        }
-
-        return preg_match('/^<\s*([A-Za-z_\\\\(>]|$)/', substr($source, $bracket, 40)) === 1;
     }
 
     /**

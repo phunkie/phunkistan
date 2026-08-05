@@ -109,6 +109,12 @@ final class TypeParser
      */
     private function arguments(Cursor $cursor): array
     {
+        // The space is skipped here rather than by whatever found this, so one
+        // object decides whether `ImmList <Int>` has arguments. Two answering
+        // differently is how a type gets read as a bare name and its arguments
+        // leak through to PHP.
+        $cursor->skipSpace();
+
         if (!$cursor->looksAt('<')) {
             return [];
         }

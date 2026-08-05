@@ -65,7 +65,13 @@ final class SyntaxCheck
         // Notation that could not be read stops here. Handing the rest to PHP
         // as well would report the same mistake twice, once in phunkie's terms
         // and once in PHP's, and the second is the one nobody can act on.
-        if ($read->hasErrors()) {
+        //
+        // Unless PHP is happy with the source exactly as written, in which case
+        // what could not be read as a type was never a type: `MAX<MIN` is a
+        // comparison. PHP is the only thing that knows this for certain, and
+        // asking it is cheaper and more honest than guessing from the shape of
+        // what follows the bracket.
+        if ($read->hasErrors() && !$this->parses($opened->text())) {
             return array_map(
                 fn (TypeSyntaxError $error): Diagnostic => $this->notationDiagnostic($error, $source, $code, $opened),
                 $read->errors
@@ -79,6 +85,23 @@ final class SyntaxCheck
         }
 
         return [];
+    }
+
+    /**
+     * Whether PHP accepts a source exactly as it stands.
+     *
+     * Only ever asked of a source that already failed to read, so a file with
+     * nothing wrong with it never pays for this.
+     */
+    private function parses(string $code): bool
+    {
+        try {
+            $this->parser->parse($code);
+        } catch (Error) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

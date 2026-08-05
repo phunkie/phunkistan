@@ -78,6 +78,13 @@ Feature: Developer writes phunkie notation and the checker understands it
       $bits = 8 >> 2;
       $smaller = $a < $b;
       $capped = MAX < 3;
+      $tight = MAX<MIN;
+      $counted = MAX<count($xs);
+      $called = MAX<strlen($s);
+      $grouped = MAX<($a + $b);
+      $unequal = FOO<>$b;
+      $keyed = [1, (2) => 3];
+      $matched = match ($x) { 1, (2) => 3, default => 4 };
       """
     When I check "src"
     Then it should have passed

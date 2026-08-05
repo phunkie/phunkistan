@@ -76,7 +76,7 @@ final class Cursor
      */
     public function looksAtHole(): bool
     {
-        return preg_match('/^_(?![A-Za-z0-9_\\\\])/', substr($this->notation, $this->at)) === 1;
+        return preg_match('/^_(?![A-Za-z0-9_\\x80-\\xff\\\\])/', substr($this->notation, $this->at)) === 1;
     }
 
     /**
@@ -105,7 +105,7 @@ final class Cursor
      */
     public function takeName(): ?string
     {
-        if (preg_match('/^[A-Za-z_\\\\][A-Za-z0-9_\\\\]*/', substr($this->notation, $this->at), $found) !== 1) {
+        if (preg_match('/^[A-Za-z_\\x80-\\xff\\\\][A-Za-z0-9_\\x80-\\xff\\\\]*/', substr($this->notation, $this->at), $found) !== 1) {
             return null;
         }
 
