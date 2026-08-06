@@ -405,6 +405,11 @@ final class Notation
      * `[1, (FOO) => BAR]` and a match arm read as callables and are followed by
      * a comma, which no declaration ever is.
      *
+     * The variadic is spelled in full, all three dots. Accepting one dot
+     * accepted concatenation with it, which made `[(FOO) => BAR . "x"]` a
+     * callable type, and the compiler removes what this says it found: a
+     * working array came apart into `[ . "x"]`.
+     *
      * A named type is asked only whether another `>` follows, which would mean
      * the bracket it just consumed belonged to a shift: `MIN < MAX >> 2`.
      */
@@ -413,7 +418,7 @@ final class Notation
         $rest = substr($source, $at, 8);
 
         if ($type instanceof CallableType) {
-            return preg_match('/^\s*[$&.{;]/', $rest) === 1;
+            return preg_match('/^\s*(\$|&|\.\.\.|\{|;)/', $rest) === 1;
         }
 
         return preg_match('/^\s*>/', $rest) !== 1;

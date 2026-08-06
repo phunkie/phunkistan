@@ -102,6 +102,18 @@ describe("Notation", function () {
         expect(count($read('$a = MIN < MAX >> 2;')->errors))->toBe(0);
     });
 
+    // A variadic is `...`, and a single `.` is concatenation. Reading one as
+    // the other made `[(FOO) => BAR . 'x']` a callable type, and the compiler,
+    // which removes what this says it found, took a working array apart.
+    it("does not take concatenation for the variadic that may follow a type", function () use ($read, $types) {
+        expect($types('$a = [(FOO) => BAR . "x"];'))->toBe('');
+        expect(count($read('$a = [(FOO) => BAR . "x"];')->blanks))->toBe(0);
+    });
+
+    it("still reads a type that a variadic follows", function () use ($types) {
+        expect($types('function f((int) => string ...$fs): int { return 1; }'))->toBe('(int) => string');
+    });
+
     it("has nothing to read where no name stands in front of the bracket", function () use ($read) {
         foreach (['$b = 8 >> 2;', '$s = $a < $b;'] as $php) {
             expect(count($read($php)->errors))->toBe(0);
