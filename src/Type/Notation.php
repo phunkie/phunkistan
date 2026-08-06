@@ -288,9 +288,32 @@ final class Notation
             return false;
         }
 
+        // A type's parameter list names types. A pattern's names the variables
+        // it is binding, so `($a, $b) => ...` deconstructing a tuple is not a
+        // callable type however much it looks like one.
+        if ($this->binds($tokens, $at, $close)) {
+            return false;
+        }
+
         $after = $this->skipSpace($tokens, $close + 1);
 
         return $after < count($tokens) && $tokens[$after]->is(T_DOUBLE_ARROW);
+    }
+
+    /**
+     * Whether a group names variables rather than types.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function binds(array $tokens, int $from, int $to): bool
+    {
+        for ($at = $from; $at <= $to; $at++) {
+            if ($tokens[$at]->is(T_VARIABLE)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
