@@ -256,6 +256,17 @@ final class Notation
             return false;
         }
 
+        // `fn(...) =>` is an arrow function and `function (...) ... {` a closure,
+        // always, in every position. That is the language rather than a guess
+        // about it, so excluding them can never hide a type. Without this every
+        // `fn($n) => ...` in a body reads as broken notation, and one of those
+        // is enough to turn the rest of the checks off for the whole file.
+        $before = $this->previous($tokens, $at);
+
+        if ($before !== null && $tokens[$before]->is([T_FN, T_FUNCTION])) {
+            return false;
+        }
+
         $after = $this->skipSpace($tokens, $close + 1);
 
         return $after < count($tokens) && $tokens[$after]->is(T_DOUBLE_ARROW);

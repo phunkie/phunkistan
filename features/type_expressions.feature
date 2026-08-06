@@ -19,6 +19,8 @@ Feature: Developer writes phunkie notation and the checker understands it
   Scenario: Every shape the notation can take is understood
     Given there is a source "src/Todo.phunkie" containing:
       """
+      use App\Model\User;
+
       class Registry
       {
           private array<string, User> $byName;
@@ -49,6 +51,35 @@ Feature: Developer writes phunkie notation and the checker understands it
     When I check "src"
     Then it should have passed
     And it should have said nothing
+
+  # A function may answer with a function, so the arrow leans right:
+  # `(int) => (int) => string` takes an int and gives back a function.
+  Scenario: A function that answers with a function
+    Given there is a source "src/Curry.phunkie" containing:
+      """
+      function curry(Int $a): (Int) => (Int) => String
+      {
+          return fn($b) => fn($c) => "x";
+      }
+      """
+    When I check "src"
+    Then it should have passed
+    And it should have said nothing
+
+  # An arrow function body reads exactly like a callable type: a bracketed
+  # group followed by an arrow. One of them anywhere in a file used to be
+  # enough to turn every other check off for that file.
+  Scenario: An arrow function in a body is not notation
+    Given there is a source "src/Todo.phunkie" containing:
+      """
+      function doubleAll(ImmList<Itn> $numbers): Int
+      {
+          return $numbers->map(fn($n) => $n * 2);
+      }
+      """
+    When I check "src"
+    Then it should have failed
+    And it should have said "Nothing here is called"
 
   # A callable type is declared wherever a declaration goes, and is recognised
   # by what follows it rather than by what sits in front, so a comment or an
