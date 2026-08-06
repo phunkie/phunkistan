@@ -31,6 +31,23 @@ use PhpToken;
  */
 final class Notation
 {
+    /**
+     * What a type's opening bracket never follows.
+     *
+     * `fn(...) =>` is an arrow function, `Some(...)` is a call or a pattern, and
+     * `$f(...)` is an invocation. Each of those is the language rather than a
+     * guess about it, which is why this can exclude without ever hiding a type.
+     */
+    private const NEVER_BEFORE_A_TYPE = [
+        T_FN,
+        T_FUNCTION,
+        T_STRING,
+        T_VARIABLE,
+        T_NAME_QUALIFIED,
+        T_NAME_FULLY_QUALIFIED,
+        T_NAME_RELATIVE,
+    ];
+
     public function __construct(
         private readonly TypeParser $parser = new TypeParser(),
     ) {
@@ -263,7 +280,11 @@ final class Notation
         // is enough to turn the rest of the checks off for the whole file.
         $before = $this->previous($tokens, $at);
 
-        if ($before !== null && $tokens[$before]->is([T_FN, T_FUNCTION])) {
+        // A bracket straight after a name is a call, and after a variable or a
+        // closing bracket it is an expression. None of those is ever a type, in
+        // any position, so excluding them cannot hide one. Without this every
+        // `Some($value) => ...` in a pattern match reads as broken notation.
+        if ($before !== null && $tokens[$before]->is(self::NEVER_BEFORE_A_TYPE)) {
             return false;
         }
 
