@@ -73,7 +73,7 @@ final class ScopeCheck implements Check
             return [];
         }
 
-        $inScope = $this->inScope($tokens, $read->declarations);
+        $inScope = $this->inScope($tokens, $read->declarations());
         $diagnostics = [];
 
         foreach ($this->names->usedIn($read->types) as $use) {

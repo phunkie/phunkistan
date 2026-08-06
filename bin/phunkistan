@@ -31,6 +31,7 @@ foreach ($candidates as $autoload) {
 }
 
 use PhpParser\ParserFactory;
+use Phunkie\Stan\Check\ArityCheck;
 use Phunkie\Stan\Check\ScopeCheck;
 use Phunkie\Stan\Check\SyntaxCheck;
 use Phunkie\Stan\Cli\Application;
@@ -41,6 +42,7 @@ use Phunkie\Stan\Source\OpeningTag;
 $checks = [
     new SyntaxCheck((new ParserFactory())->createForNewestSupportedVersion(), new OpeningTag()),
     new ScopeCheck(),
+    new ArityCheck(),
 ];
 
 exit((new Application($checks))->run(array_slice($argv, 1)));

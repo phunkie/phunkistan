@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 use PhpToken;
 
 /**
@@ -45,7 +47,7 @@ final class Notation
     {
         $tokens = PhpToken::tokenize($source);
         $types = [];
-        $declarations = [];
+        $headers = [];
         $errors = [];
         $blanked = $source;
 
@@ -69,7 +71,11 @@ final class Notation
                 // something is later going to try to look it up.
                 if ($isHeader) {
                     $cursor->take($keep);
-                    $declarations = array_merge($declarations, $this->parser->parameters($cursor));
+                    $headers[] = new DeclarationHeader(
+                        substr($source, $at, $keep),
+                        $this->parser->parameters($cursor),
+                        new Region($at, $cursor->offset())
+                    );
                 } else {
                     $types[] = $this->parser->type($cursor);
                 }
@@ -108,7 +114,7 @@ final class Notation
             }
         }
 
-        return new ReadNotation($types, $declarations, $errors, $blanked);
+        return new ReadNotation($types, $headers, $errors, $blanked);
     }
 
     /**

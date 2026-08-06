@@ -20,16 +20,36 @@ final class ReadNotation
 {
     /**
      * @param list<Type>                     $types        Every use of a type that was understood
-     * @param list<TypeParameterDeclaration>  $declarations Every type parameter a declaration introduced
+     * @param list<DeclarationHeader>         $headers      Every declaration head, with what it binds
      * @param list<TypeSyntaxError>           $errors       Notation that could not be read, with offsets
      * @param string                          $php          The source with its notation blanked out
      */
     public function __construct(
         public readonly array $types,
-        public readonly array $declarations,
+        public readonly array $headers,
         public readonly array $errors,
         public readonly string $php,
     ) {
+    }
+
+    /**
+     * Every type parameter any declaration in the file introduced.
+     *
+     * Flattened deliberately for scope, where the question is only whether a
+     * name was bound anywhere in this file. Arity asks a different question and
+     * reads the headers, where a parameter is still attached to what bound it.
+     *
+     * @return list<TypeParameterDeclaration>
+     */
+    public function declarations(): array
+    {
+        $parameters = [];
+
+        foreach ($this->headers as $header) {
+            $parameters = array_merge($parameters, $header->parameters);
+        }
+
+        return $parameters;
     }
 
     /**
