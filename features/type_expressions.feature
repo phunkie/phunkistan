@@ -85,6 +85,8 @@ Feature: Developer writes phunkie notation and the checker understands it
   Scenario: A type may be named with a word PHP keeps for itself
     Given there is a source "src/Words.phunkie" containing:
       """
+      namespace App\Words;
+
       function f(Function<Int, String> $x): Try<Int>
       {
           return $x;

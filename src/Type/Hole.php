@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 /**
  * The gap in a type that is not finished yet.
  *
@@ -23,6 +25,22 @@ namespace Phunkie\Stan\Type;
  */
 final class Hole implements Type
 {
+    /**
+     * @param Region $region Where the underscore was written
+     */
+    public function __construct(
+        public readonly Region $region,
+    ) {
+    }
+
+    /**
+     * @return Region Where the underscore was written
+     */
+    public function region(): Region
+    {
+        return $this->region;
+    }
+
     /**
      * @return string The underscore, as it was written
      */

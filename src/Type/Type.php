@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 /**
  * Something written where a type belongs.
  *
@@ -31,4 +33,11 @@ interface Type
      * @return string The surface syntax of this type
      */
     public function __toString(): string;
+
+    /**
+     * Where this was written.
+     *
+     * @return Region The bytes it occupies in the source it was read from
+     */
+    public function region(): Region;
 }

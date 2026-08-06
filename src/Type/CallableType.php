@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 /**
  * A function's shape: what it takes, and what it answers with.
  *
@@ -24,11 +26,21 @@ final class CallableType implements Type
     /**
      * @param list<Type> $parameters What it takes, in order
      * @param Type       $returns    What it answers with
+     * @param Region     $region     Where the whole shape was written
      */
     public function __construct(
         public readonly array $parameters,
         public readonly Type $returns,
+        public readonly Region $region,
     ) {
+    }
+
+    /**
+     * @return Region Where the whole shape was written
+     */
+    public function region(): Region
+    {
+        return $this->region;
     }
 
     /**

@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 /**
  * Reads phunkie's type notation.
  *
@@ -77,15 +79,16 @@ final class TypeParser
     public function type(Cursor $cursor): Type
     {
         $cursor->skipSpace();
+        $from = $cursor->offset();
 
         if ($cursor->looksAt('(')) {
-            return $this->callable($cursor);
+            return $this->callable($cursor, $from);
         }
 
         if ($cursor->looksAtHole()) {
             $cursor->take(1);
 
-            return new Hole();
+            return new Hole(new Region($from, $cursor->offset()));
         }
 
         $name = $cursor->takeName();
@@ -97,7 +100,119 @@ final class TypeParser
             );
         }
 
-        return new TypeName($name, $this->arguments($cursor));
+        // The name is its own node with its own region, because that is what a
+        // diagnostic about an unknown type underlines. Underlining the whole
+        // application would point at the arguments too, which are not what is
+        // wrong with `ImmList<Itn>`.
+        $constructor = new TypeNameUse($name, new Region($from, $cursor->offset()));
+        $arguments = $this->arguments($cursor);
+
+        if ($arguments === []) {
+            return $constructor;
+        }
+
+        return new TypeApplication($constructor, $arguments, new Region($from, $cursor->offset()));
+    }
+
+    /**
+     * Reads a declaration's type parameter clause.
+     *
+     * These are binders, not uses. `class Stack<Itn>` introduces a parameter
+     * unfortunately spelled `Itn` and is entirely legal, so nothing here is
+     * looked up and nothing here may be reported as unknown.
+     *
+     * A binder's own brackets state its arity: `F<_>` says F takes one argument
+     * of its own, which is what lets `Functor<F<_>>` mean something for every F
+     * that has a map.
+     *
+     * @param Cursor $cursor Standing on the opening bracket
+     *
+     * @throws TypeSyntaxError If the clause is not a list of names
+     *
+     * @return list<TypeParameterDeclaration> The parameters it introduces
+     */
+    public function parameters(Cursor $cursor): array
+    {
+        $cursor->skipSpace();
+
+        if (!$cursor->looksAt('<')) {
+            return [];
+        }
+
+        $cursor->take(1);
+        $parameters = [];
+
+        while (true) {
+            $cursor->skipSpace();
+            $from = $cursor->offset();
+            $name = $cursor->takeName();
+
+            if ($name === null) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected the name of a type parameter, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $parameters[] = new TypeParameterDeclaration($name, $this->arity($cursor), new Region($from, $cursor->offset()));
+            $cursor->skipSpace();
+
+            if ($cursor->closeGroup()) {
+                return $parameters;
+            }
+
+            if (!$cursor->looksAt(',')) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected "," or ">" between type parameters, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $cursor->take(1);
+        }
+    }
+
+    /**
+     * How many arguments a parameter takes itself, read from its own holes.
+     *
+     * @throws TypeSyntaxError
+     */
+    private function arity(Cursor $cursor): int
+    {
+        if (!$cursor->looksAt('<')) {
+            return 0;
+        }
+
+        $cursor->take(1);
+        $arity = 0;
+
+        while (true) {
+            $cursor->skipSpace();
+
+            if (!$cursor->looksAtHole()) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected "_" to say what shape this parameter takes, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $cursor->take(1);
+            $arity++;
+            $cursor->skipSpace();
+
+            if ($cursor->closeGroup()) {
+                return $arity;
+            }
+
+            if (!$cursor->looksAt(',')) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected "," or ">" between holes, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $cursor->take(1);
+        }
     }
 
     /**
@@ -161,7 +276,7 @@ final class TypeParser
     /**
      * @throws TypeSyntaxError
      */
-    private function callable(Cursor $cursor): CallableType
+    private function callable(Cursor $cursor, int $from): CallableType
     {
         $cursor->take(1);
         $cursor->skipSpace();
@@ -196,8 +311,9 @@ final class TypeParser
         }
 
         $cursor->take(2);
+        $returns = $this->type($cursor);
 
-        return new CallableType($parameters, $this->type($cursor));
+        return new CallableType($parameters, $returns, new Region($from, $cursor->offset()));
     }
 
     /**

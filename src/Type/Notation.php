@@ -45,12 +45,13 @@ final class Notation
     {
         $tokens = PhpToken::tokenize($source);
         $types = [];
+        $declarations = [];
         $errors = [];
         $blanked = $source;
 
         $read = 0;
 
-        foreach ($this->notationIn($tokens) as [$keep, $from, $at]) {
+        foreach ($this->notationIn($tokens) as [$keep, $from, $at, $isHeader]) {
             // A nested type is already whole in the type that contains it, so
             // its inner names are candidates that have been read once. Reading
             // them again says the same thing twice, and when the notation is
@@ -62,7 +63,16 @@ final class Notation
             $cursor = new Cursor(substr($source, $at), $at);
 
             try {
-                $types[] = $this->parser->type($cursor);
+                // A declaration header is not a type. `class Stack<T>` declares
+                // a type constructor and binds a parameter, and reading it as a
+                // type would both invent one nobody wrote and put `T` where
+                // something is later going to try to look it up.
+                if ($isHeader) {
+                    $cursor->take($keep);
+                    $declarations = array_merge($declarations, $this->parser->parameters($cursor));
+                } else {
+                    $types[] = $this->parser->type($cursor);
+                }
             } catch (TypeSyntaxError $error) {
                 $read = $error->offset;
                 $error = new TypeSyntaxError($error->getMessage(), $error->offset, $at);
@@ -81,7 +91,7 @@ final class Notation
             // array key or a match arm reads as a callable that nothing could
             // ever be declared as. Both are arithmetic wearing the notation's
             // shape, and both are only visible from the far end of it.
-            if (!$this->isFollowedProperly($source, $cursor->offset(), end($types))) {
+            if (!$isHeader && !$this->isFollowedProperly($source, $cursor->offset(), end($types))) {
                 array_pop($types);
 
                 continue;
@@ -98,7 +108,7 @@ final class Notation
             }
         }
 
-        return new ReadNotation($types, $errors, $blanked);
+        return new ReadNotation($types, $declarations, $errors, $blanked);
     }
 
     /**
@@ -112,7 +122,7 @@ final class Notation
      *
      * @param list<PhpToken> $tokens
      *
-     * @return list<array{int, int, int}>
+     * @return list<array{int, int, int, bool}>
      */
     private function notationIn(array $tokens): array
     {
@@ -128,19 +138,44 @@ final class Notation
             // `<>`, which is the not-equal operator, and never as a bracket at
             // all.
             if ($this->readsAsAName($token) && $next < $count && str_starts_with($tokens[$next]->text, '<')) {
+                // Grammar position says unambiguously which this is, which is
+                // why the parser can mark binders as declarations and never has
+                // to guess.
+                if ($this->isHeader($tokens, $at)) {
+                    $found[] = [strlen($token->text), $token->pos, $token->pos, true];
+
+                    continue;
+                }
+
                 $keep = $this->keepableLength($token);
 
-                $found[] = [$keep, $keep === 0 ? $this->blankFrom($tokens, $at) : $token->pos, $token->pos];
+                $found[] = [$keep, $keep === 0 ? $this->blankFrom($tokens, $at) : $token->pos, $token->pos, false];
 
                 continue;
             }
 
             if ($this->opensACallableType($tokens, $at)) {
-                $found[] = [0, $this->blankFrom($tokens, $at), $token->pos];
+                $found[] = [0, $this->blankFrom($tokens, $at), $token->pos, false];
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Whether a name is the one being declared rather than one being used.
+     *
+     * What sits in front settles it and nothing else can: after `class` the
+     * brackets introduce parameters, and everywhere else they supply arguments.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function isHeader(array $tokens, int $at): bool
+    {
+        $before = $this->previous($tokens, $at);
+
+        return $before !== null
+            && $tokens[$before]->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM, T_FUNCTION]);
     }
 
     /**

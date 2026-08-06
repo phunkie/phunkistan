@@ -19,12 +19,14 @@ namespace Phunkie\Stan\Type;
 final class ReadNotation
 {
     /**
-     * @param list<Type>            $types   Every type expression that was understood
-     * @param list<TypeSyntaxError> $errors  Notation that could not be read, with offsets
-     * @param string                $php     The source with its notation blanked out
+     * @param list<Type>                     $types        Every use of a type that was understood
+     * @param list<TypeParameterDeclaration>  $declarations Every type parameter a declaration introduced
+     * @param list<TypeSyntaxError>           $errors       Notation that could not be read, with offsets
+     * @param string                          $php          The source with its notation blanked out
      */
     public function __construct(
         public readonly array $types,
+        public readonly array $declarations,
         public readonly array $errors,
         public readonly string $php,
     ) {

@@ -13,7 +13,7 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Cli;
 
-use Phunkie\Stan\Check\SyntaxCheck;
+use Phunkie\Stan\Check\Check;
 use Phunkie\Stan\Diagnostic\Diagnostic;
 use Phunkie\Stan\Diagnostic\JsonRenderer;
 use Phunkie\Stan\Diagnostic\PrettyRenderer;
@@ -49,11 +49,11 @@ final class Application
     public const UNREADABLE_CATEGORY = 'CANNOT READ';
 
     /**
-     * @param SyntaxCheck $check   Check to run over every source
+     * @param list<Check> $checks  Checks to run over every source, in order
      * @param Watcher     $watcher Notices sources being saved, under --watch
      */
     public function __construct(
-        private readonly SyntaxCheck $check,
+        private readonly array $checks,
         private readonly Watcher $watcher = new PollingWatcher(),
     ) {
     }
@@ -204,11 +204,17 @@ final class Application
      */
     private function check(Source $source): array
     {
+        $diagnostics = [];
+
         try {
-            return $this->check->on($source);
+            foreach ($this->checks as $check) {
+                $diagnostics = array_merge($diagnostics, $check->on($source));
+            }
         } catch (UnreadablePath $unreadable) {
             return [$this->unreadable($source->relativePath, $unreadable->getMessage())];
         }
+
+        return $diagnostics;
     }
 
     private function unreadable(string $path, string $message): Diagnostic

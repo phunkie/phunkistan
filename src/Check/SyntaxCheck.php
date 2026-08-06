@@ -31,7 +31,7 @@ use Phunkie\Stan\Type\TypeSyntaxError;
  * phunkie. A file carrying type arguments will fail here for now, which is
  * honest rather than useful, and is exactly the gap the grammar closes.
  */
-final class SyntaxCheck
+final class SyntaxCheck implements Check
 {
     public const CODE = 'E0001';
     public const NOTATION_CODE = 'E0003';
