@@ -13,22 +13,26 @@ declare(strict_types=1);
 
 namespace Phunkie\Stan\Type;
 
+use Phunkie\Stan\Source\Region;
+
 /**
  * What reading a source's notation found.
  */
 final class ReadNotation
 {
     /**
-     * @param list<Type>                     $types        Every use of a type that was understood
-     * @param list<DeclarationHeader>         $headers      Every declaration head, with what it binds
-     * @param list<TypeSyntaxError>           $errors       Notation that could not be read, with offsets
-     * @param string                          $php          The source with its notation blanked out
+     * @param list<Type>              $types   Every use of a type that was understood
+     * @param list<DeclarationHeader> $headers Every declaration head, with what it binds
+     * @param list<TypeSyntaxError>   $errors  Notation that could not be read, with offsets
+     * @param string                  $php     The source with its notation blanked out
+     * @param list<Region>            $blanks  Where the notation was, in source order
      */
     public function __construct(
         public readonly array $types,
         public readonly array $headers,
         public readonly array $errors,
         public readonly string $php,
+        public readonly array $blanks = [],
     ) {
     }
 

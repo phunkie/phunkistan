@@ -66,6 +66,7 @@ final class Notation
         $types = [];
         $headers = [];
         $errors = [];
+        $blanks = [];
         $blanked = $source;
 
         $read = 0;
@@ -93,8 +94,10 @@ final class Notation
                         $this->parser->parameters($cursor),
                         new Region($at, $cursor->offset())
                     );
+                    $wrote = $cursor->offset();
                 } else {
                     $types[] = $this->parser->type($cursor);
+                    $wrote = end($types)->region()->to;
                 }
             } catch (TypeSyntaxError $error) {
                 $read = $error->offset;
@@ -121,17 +124,24 @@ final class Notation
             }
 
             $read = $cursor->offset();
-            $blanked = $this->blank($blanked, $at + $keep, $cursor->offset());
 
             // A callable type leaves nothing behind for PHP to enforce, so the
             // colon in front of it goes too: `function f():  {` is not PHP,
             // where `function f()    {` is.
             if ($from < $at) {
-                $blanked = $this->blank($blanked, $from, $at);
+                $blanks[] = new Region($from, $at);
             }
+
+            $blanks[] = new Region($at + $keep, $wrote);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked);
+        // Blanked from the same regions that are handed out, so what this says
+        // it took and what it took are one answer rather than two.
+        foreach ($blanks as $blank) {
+            $blanked = $this->blank($blanked, $blank->from, $blank->to);
+        }
+
+        return new ReadNotation($types, $headers, $errors, $blanked, $blanks);
     }
 
     /**

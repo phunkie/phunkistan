@@ -60,6 +60,22 @@ describe("Notation", function () {
             ->toContain('array')->not()->toContain('<User>');
     });
 
+    // What was taken out, said as regions rather than left to be worked out by
+    // comparing the two strings. The compiler erases for real where this blanks,
+    // and it has to erase the same stretches or the two disagree about the
+    // language again, which is the drift this package exists to end.
+    it("says exactly what it took out", function () {
+        $php = 'function f(ImmList<Int> $x): (int) => string { return "a"; }';
+        $found = (new Notation())->readFrom($source = '<?php ' . $php);
+
+        $taken = array_map(
+            static fn ($region): string => substr($source, $region->from, $region->to - $region->from),
+            $found->blanks
+        );
+
+        expect($taken)->toBe(['<Int>', ': ', '(int) => string']);
+    });
+
     it("reads a type written with a space before its arguments", function () use ($types) {
         expect($types('function f(ImmList <Int> $x): int { return 1; }'))->toBe('ImmList<Int>');
     });
