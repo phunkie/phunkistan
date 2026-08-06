@@ -51,6 +51,15 @@ describe("Notation", function () {
         expect($types('function f(callable<Int> $x): int { return 1; }'))->toBe('callable<Int>');
     });
 
+    // `array` is a word PHP keeps for itself and also a type it enforces, which
+    // no other reserved word here is. Blanking it whole cost the reader the one
+    // check PHP could still have made, and left `array<User> $users` weaker
+    // than the plain `array $users` it was written to improve on.
+    it("keeps a reserved word PHP would still enforce", function () use ($read) {
+        expect($read('function f(array<User> $x): int { return 1; }')->php)
+            ->toContain('array')->not()->toContain('<User>');
+    });
+
     it("reads a type written with a space before its arguments", function () use ($types) {
         expect($types('function f(ImmList <Int> $x): int { return 1; }'))->toBe('ImmList<Int>');
     });

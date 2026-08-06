@@ -223,13 +223,17 @@ final class Notation
      * keeps for itself goes with its arguments, because `Function` alone is not
      * a type PHP will read however few brackets follow it.
      *
+     * `array` is the exception in both directions: reserved, and a type PHP
+     * enforces. Blanking it whole would leave `array<User> $users` weaker than
+     * the plain `array $users` it was written to improve on.
+     *
      * The token's kind decides this, which is safe where deciding detection by
      * it was not: being wrong here means blanking more than necessary, and
      * being wrong there meant missing notation entirely.
      */
     private function keepableLength(PhpToken $token): int
     {
-        $names = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE];
+        $names = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE, T_ARRAY];
 
         return $token->is($names) ? strlen($token->text) : 0;
     }
