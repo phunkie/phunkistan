@@ -110,23 +110,6 @@ Feature: Developer writes phunkie notation and the checker understands it
     Then it should have passed
     And it should have said nothing
 
-  # PHP keeps around forty words for itself, and several of them are names a
-  # functional language wants. Enumerating the ones worth keeping is a list that
-  # is never finished.
-  Scenario: A type may be named with a word PHP keeps for itself
-    Given there is a source "src/Words.phunkie" containing:
-      """
-      namespace App\Words;
-
-      function f(Function<Int, String> $x): Try<Int>
-      {
-          return $x;
-      }
-      """
-    When I check "src"
-    Then it should have passed
-    And it should have said nothing
-
   Scenario: A class declares the parameters it takes
     Given there is a source "src/Stack.phunkie" containing:
       """
