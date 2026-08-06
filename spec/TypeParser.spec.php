@@ -9,6 +9,7 @@
  * file that was distributed with this source code.
  */
 
+use Phunkie\Stan\Type\Cursor;
 use Phunkie\Stan\Type\TypeParser;
 use Phunkie\Stan\Type\TypeSyntaxError;
 
@@ -83,6 +84,16 @@ describe("TypeParser", function () {
 
     it("refuses a function that answers with nothing", function () {
         expect(fn () => (new TypeParser())->parse('(string) =>'))->toThrow(TypeSyntaxError::class);
+    });
+
+    // A region is where a type was written, not where the cursor stopped
+    // reading it. Reading a return type skips whatever follows it before
+    // asking for arguments, so a function's shape claimed the space in front
+    // of the variable it declared, and underlining it pointed one past itself.
+    it("ends a function's shape where the shape ends", function () {
+        $type = (new TypeParser())->type(new Cursor('(int) => string $f'));
+
+        expect($type->region()->to)->toBe(strlen('(int) => string'));
     });
 
     it("says where it gave up", function () {

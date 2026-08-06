@@ -313,7 +313,11 @@ final class TypeParser
         $cursor->take(2);
         $returns = $this->type($cursor);
 
-        return new CallableType($parameters, $returns, new Region($from, $cursor->offset()));
+        // The shape ends where its return type ends, not where the cursor
+        // stopped. Reading a type skips the space that follows it before asking
+        // whether arguments come next, so the cursor is already past the end of
+        // what was written by the time this can ask.
+        return new CallableType($parameters, $returns, new Region($from, $returns->region()->to));
     }
 
     /**
