@@ -60,17 +60,23 @@ describe("Notation", function () {
             ->toContain('array')->not()->toContain('<User>');
     });
 
-    // What was taken out, said as regions rather than left to be worked out by
-    // comparing the two strings. The compiler erases for real where this blanks,
-    // and it has to erase the same stretches or the two disagree about the
-    // language again, which is the drift this package exists to end.
-    it("says exactly what it took out", function () {
+    // What the compiler should remove, said as regions rather than left to be
+    // worked out by comparing the two strings. It has to remove the same
+    // stretches this read, or the two disagree about the language again, which
+    // is the drift this package exists to end.
+    //
+    // Not the same question as what was put out of PHP's way. A type says
+    // something about the program and is gone once it has been checked. Notation
+    // that is part of the program has to be stood in for so PHP can read around
+    // it and has to survive, because something downstream rewrites it. Only the
+    // rule that matched knows which of the two this was.
+    it("says exactly what the compiler should erase", function () {
         $php = 'function f(ImmList<Int> $x): (int) => string { return "a"; }';
         $found = (new Notation())->readFrom($source = '<?php ' . $php);
 
         $taken = array_map(
             static fn ($region): string => substr($source, $region->from, $region->to - $region->from),
-            $found->blanks
+            $found->erasures
         );
 
         expect($taken)->toBe(['<Int>', ': ', '(int) => string']);
@@ -107,7 +113,7 @@ describe("Notation", function () {
     // which removes what this says it found, took a working array apart.
     it("does not take concatenation for the variadic that may follow a type", function () use ($read, $types) {
         expect($types('$a = [(FOO) => BAR . "x"];'))->toBe('');
-        expect(count($read('$a = [(FOO) => BAR . "x"];')->blanks))->toBe(0);
+        expect(count($read('$a = [(FOO) => BAR . "x"];')->erasures))->toBe(0);
     });
 
     it("still reads a type that a variadic follows", function () use ($types) {

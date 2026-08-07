@@ -66,7 +66,7 @@ final class Notation
         $types = [];
         $headers = [];
         $errors = [];
-        $blanks = [];
+        $erasures = [];
         $blanked = $source;
 
         $read = 0;
@@ -129,19 +129,19 @@ final class Notation
             // colon in front of it goes too: `function f():  {` is not PHP,
             // where `function f()    {` is.
             if ($from < $at) {
-                $blanks[] = new Region($from, $at);
+                $erasures[] = new Region($from, $at);
             }
 
-            $blanks[] = new Region($at + $keep, $wrote);
+            $erasures[] = new Region($at + $keep, $wrote);
         }
 
         // Blanked from the same regions that are handed out, so what this says
         // it took and what it took are one answer rather than two.
-        foreach ($blanks as $blank) {
+        foreach ($erasures as $blank) {
             $blanked = $this->blank($blanked, $blank->from, $blank->to);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $blanks);
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures);
     }
 
     /**

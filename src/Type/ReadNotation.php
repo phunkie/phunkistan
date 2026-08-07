@@ -25,14 +25,14 @@ final class ReadNotation
      * @param list<DeclarationHeader> $headers Every declaration head, with what it binds
      * @param list<TypeSyntaxError>   $errors  Notation that could not be read, with offsets
      * @param string                  $php     The source with its notation blanked out
-     * @param list<Region>            $blanks  Where the notation was, in source order
+     * @param list<Region>            $erasures What the compiler should remove, in source order
      */
     public function __construct(
         public readonly array $types,
         public readonly array $headers,
         public readonly array $errors,
         public readonly string $php,
-        public readonly array $blanks = [],
+        public readonly array $erasures = [],
     ) {
     }
 
