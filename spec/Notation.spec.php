@@ -82,6 +82,32 @@ describe("Notation", function () {
         expect($taken)->toBe(['<Int>', ': ', '(int) => string']);
     });
 
+    // `typeclass` is phunkie's keyword and nothing to PHP, so the stand-in
+    // swaps it for `interface`, which PHP can hold it as. The two words are
+    // the same length, so the swap moves nothing.
+    it("reads a typeclass header the way it reads an interface", function () use ($read) {
+        $found = $read('typeclass Functor<F<_>> { }');
+
+        expect(count($found->headers))->toBe(1);
+        expect($found->headers[0]->name)->toBe('Functor');
+        expect($found->php)->toContain('interface Functor');
+    });
+
+    // The compiler needs to write `interface` too, and it must not have a
+    // second opinion about where the keyword was. The regions in
+    // substitutions say: here, adopt the stand-in's text as your own.
+    it("says where the compiler should adopt the stand-in's text", function () {
+        $source = '<?php typeclass Functor<F<_>> { }';
+        $found = (new Notation())->readFrom($source);
+
+        expect(count($found->substitutions))->toBe(1);
+
+        $region = $found->substitutions[0];
+
+        expect(substr($source, $region->from, $region->to - $region->from))->toBe('typeclass');
+        expect(substr($found->php, $region->from, $region->to - $region->from))->toBe('interface');
+    });
+
     it("reads a type written with a space before its arguments", function () use ($types) {
         expect($types('function f(ImmList <Int> $x): int { return 1; }'))->toBe('ImmList<Int>');
     });

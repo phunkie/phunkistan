@@ -32,6 +32,18 @@ use PhpToken;
 final class Notation
 {
     /**
+     * The word that declares one of the Cats.
+     *
+     * It is phunkie's and means nothing to PHP, so the stand-in swaps it for
+     * `interface`, which is what a typeclass erases to. The two words are the
+     * same length, which is not luck being leaned on but a requirement being
+     * met: the swap may not move an offset.
+     */
+    public const TYPECLASS = 'typeclass';
+
+    private const STANDS_IN = 'interface';
+
+    /**
      * What a type's opening bracket never follows.
      *
      * `fn(...) =>` is an arrow function, `Some(...)` is a call or a pattern, and
@@ -67,11 +79,12 @@ final class Notation
         $headers = [];
         $errors = [];
         $erasures = [];
+        $substitutions = [];
         $blanked = $source;
 
         $read = 0;
 
-        foreach ($this->notationIn($tokens) as [$keep, $from, $at, $isHeader]) {
+        foreach ($this->notationIn($tokens) as [$keep, $from, $at, $isHeader, $keyword]) {
             // A nested type is already whole in the type that contains it, so
             // its inner names are candidates that have been read once. Reading
             // them again says the same thing twice, and when the notation is
@@ -95,6 +108,10 @@ final class Notation
                         new Region($at, $cursor->offset())
                     );
                     $wrote = $cursor->offset();
+
+                    if ($keyword !== null) {
+                        $substitutions[] = new Region($keyword, $keyword + strlen(self::TYPECLASS));
+                    }
                 } else {
                     $types[] = $this->parser->type($cursor);
                     $wrote = end($types)->region()->to;
@@ -141,7 +158,11 @@ final class Notation
             $blanked = $this->blank($blanked, $blank->from, $blank->to);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $erasures);
+        foreach ($substitutions as $substitution) {
+            $blanked = substr_replace($blanked, self::STANDS_IN, $substitution->from, $substitution->to - $substitution->from);
+        }
+
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions);
     }
 
     /**
@@ -175,20 +196,20 @@ final class Notation
                 // why the parser can mark binders as declarations and never has
                 // to guess.
                 if ($this->isHeader($tokens, $at)) {
-                    $found[] = [strlen($token->text), $token->pos, $token->pos, true];
+                    $found[] = [strlen($token->text), $token->pos, $token->pos, true, $this->typeclassBefore($tokens, $at)];
 
                     continue;
                 }
 
                 $keep = $this->keepableLength($token);
 
-                $found[] = [$keep, $keep === 0 ? $this->blankFrom($tokens, $at) : $token->pos, $token->pos, false];
+                $found[] = [$keep, $keep === 0 ? $this->blankFrom($tokens, $at) : $token->pos, $token->pos, false, null];
 
                 continue;
             }
 
             if ($this->opensACallableType($tokens, $at)) {
-                $found[] = [0, $this->blankFrom($tokens, $at), $token->pos, false];
+                $found[] = [0, $this->blankFrom($tokens, $at), $token->pos, false, null];
             }
         }
 
@@ -207,8 +228,32 @@ final class Notation
     {
         $before = $this->previous($tokens, $at);
 
-        return $before !== null
-            && $tokens[$before]->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM, T_FUNCTION]);
+        if ($before === null) {
+            return false;
+        }
+
+        return $tokens[$before]->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM, T_FUNCTION])
+            || $this->typeclassBefore($tokens, $at) !== null;
+    }
+
+    /**
+     * Where the typeclass keyword sits in front of a name, if it does.
+     *
+     * Asked separately from `isHeader` because the keyword is the one part of
+     * a header that has to be rewritten as well as recognised: PHP has no idea
+     * what a typeclass is, and `interface` is what one erases to.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function typeclassBefore(array $tokens, int $at): ?int
+    {
+        $before = $this->previous($tokens, $at);
+
+        if ($before === null || !$tokens[$before]->is(T_STRING) || $tokens[$before]->text !== self::TYPECLASS) {
+            return null;
+        }
+
+        return $tokens[$before]->pos;
     }
 
     /**

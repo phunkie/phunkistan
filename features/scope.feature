@@ -79,3 +79,14 @@ Feature: Developer is told when a name in a type means nothing here
     When I check "src"
     Then it should have passed
     And it should have said nothing
+
+  Scenario: A typeclass declares its name and binds its parameters
+    Given there is a source "src/Todo.phunkie" containing:
+      """
+      typeclass Functor<F<_>>
+      {
+          public function map<A, B>((A) => B $f): F<B>;
+      }
+      """
+    When I check "src"
+    Then it should have passed

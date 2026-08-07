@@ -21,11 +21,13 @@ use Phunkie\Stan\Source\Region;
 final class ReadNotation
 {
     /**
-     * @param list<Type>              $types   Every use of a type that was understood
-     * @param list<DeclarationHeader> $headers Every declaration head, with what it binds
-     * @param list<TypeSyntaxError>   $errors  Notation that could not be read, with offsets
-     * @param string                  $php     The source with its notation blanked out
-     * @param list<Region>            $erasures What the compiler should remove, in source order
+     * @param list<Type>              $types         Every use of a type that was understood
+     * @param list<DeclarationHeader> $headers       Every declaration head, with what it binds
+     * @param list<TypeSyntaxError>   $errors        Notation that could not be read, with offsets
+     * @param string                  $php           The source with its notation blanked out
+     * @param list<Region>            $erasures      What the compiler should remove, in source order
+     * @param list<Region>            $substitutions Where the compiler should adopt the stand-in's
+     *                                               text as its own, the same length by construction
      */
     public function __construct(
         public readonly array $types,
@@ -33,6 +35,7 @@ final class ReadNotation
         public readonly array $errors,
         public readonly string $php,
         public readonly array $erasures = [],
+        public readonly array $substitutions = [],
     ) {
     }
 

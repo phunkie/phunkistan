@@ -134,7 +134,10 @@ final class ScopeCheck implements Check
         $count = count($tokens);
 
         for ($at = 0; $at < $count; $at++) {
-            if ($tokens[$at]->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM])) {
+            $declares = $tokens[$at]->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM])
+                || ($tokens[$at]->is(T_STRING) && $tokens[$at]->text === Notation::TYPECLASS);
+
+            if ($declares) {
                 $name = $this->nameAfter($tokens, $at);
 
                 if ($name !== null) {
