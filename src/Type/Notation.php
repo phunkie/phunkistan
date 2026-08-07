@@ -176,7 +176,7 @@ final class Notation
      *
      * @param list<PhpToken> $tokens
      *
-     * @return list<array{int, int, int, bool}>
+     * @return list<array{int, int, int, bool, int|null}>
      */
     private function notationIn(array $tokens): array
     {
