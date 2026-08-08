@@ -38,6 +38,8 @@ final class CompanionSynthesis
      *                                                 companion folds its arguments into a chain
      * @param list<string>|null         $nullable      Wrapping case and empty case, for a head
      *                                                 whose companion sends null to the empty case
+     * @param string|null               $named         The function's own name, where it differs
+     *                                                 from the class's: Nel for NonEmptyList
      */
     public function __construct(
         public readonly string $class,
@@ -46,6 +48,7 @@ final class CompanionSynthesis
         public readonly bool $withArguments = true,
         public readonly ?array $variadic = null,
         public readonly ?array $nullable = null,
+        public readonly ?string $named = null,
     ) {
     }
 }

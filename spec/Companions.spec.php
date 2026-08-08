@@ -69,6 +69,18 @@ describe("Companion notation", function () {
         expect($companion->nullable)->toBe(['Some', 'None']);
     });
 
+    // A class may have more than one companion, and a companion may carry a
+    // name of its own: Nel is the variadic face of NonEmptyList.
+    it("reads a second, named companion on the same class", function () use ($read) {
+        $found = $read("#[Companion]\n#[Companion(named: Nel, variadic: [NonEmptyList, Nil])]\nfinal class NonEmptyList<T>(T \$head, ImmList<T> \$tail) extends ImmList<T>;");
+
+        expect(count($found->companions))->toBe(2);
+        expect($found->companions[0]->named)->toBe(null);
+        expect($found->companions[1]->named)->toBe('Nel');
+        expect($found->companions[1]->class)->toBe('NonEmptyList');
+        expect($found->companions[1]->variadic)->toBe(['NonEmptyList', 'Nil']);
+    });
+
     // The attribute is legal PHP and generation is the compiler's; the reader
     // only reports it, so every byte keeps its offset and the attribute rides
     // through to the output as its own documentation.

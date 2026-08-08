@@ -657,6 +657,7 @@ final class Notation
         $withArguments = true;
         $variadic = null;
         $nullable = null;
+        $named = null;
 
         $cursor = new Cursor($arguments, $argsAt);
         $cursor->skipSpace();
@@ -676,6 +677,7 @@ final class Notation
                 'withArguments' => $withArguments = $this->boolean($cursor, $name),
                 'variadic' => $variadic = $this->cases($cursor, $name),
                 'nullable' => $nullable = $this->cases($cursor, $name),
+                'named' => $named = $cursor->takeName(),
                 default => throw new TypeSyntaxError(sprintf('"#[Companion]" has no "%s" argument.', $name), $cursor->offset(), $argsAt),
             };
 
@@ -687,7 +689,7 @@ final class Notation
             }
         }
 
-        return new CompanionSynthesis($className, $parameters, $singleton, $withArguments, $variadic, $nullable);
+        return new CompanionSynthesis($className, $parameters, $singleton, $withArguments, $variadic, $nullable, $named);
     }
 
     /**
