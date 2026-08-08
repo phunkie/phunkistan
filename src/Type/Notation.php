@@ -108,6 +108,25 @@ final class Notation
             $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to - 1);
         }
 
+        // Block properties next, for the same reason: their arms are theirs,
+        // and the main loop must not read patterns as types.
+        $blockMethods = [];
+
+        foreach ($this->blockPropertiesIn($tokens) as [$declStart, $variableAt]) {
+            try {
+                $blockMethods[] = $method = $this->blockMethod($source, $declStart, $variableAt);
+            } catch (TypeSyntaxError $error) {
+                $errors[] = new TypeSyntaxError($error->getMessage(), $error->offset, $declStart);
+
+                continue;
+            }
+
+            // All spaces, semicolon included: a class body has no place for an
+            // empty statement, and the method this becomes is the compiler's
+            // to write.
+            $blanked = $this->blank($blanked, $method->region->from, $method->region->to);
+        }
+
         $read = 0;
 
         foreach ($this->notationIn($tokens) as [$keep, $from, $at, $isHeader, $keyword]) {
@@ -119,7 +138,7 @@ final class Notation
                 continue;
             }
 
-            if ($this->insideASynthesis($syntheses, $at)) {
+            if ($this->insideASynthesis($syntheses, $at) || $this->insideABlockMethod($blockMethods, $at)) {
                 continue;
             }
 
@@ -192,7 +211,190 @@ final class Notation
             $blanked = substr_replace($blanked, self::STANDS_IN, $substitution->from, $substitution->to - $substitution->from);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses);
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses, $blockMethods);
+    }
+
+    /**
+     * Every property whose default is a block.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return list<array{int, int}> Declaration start (the visibility keyword)
+     *                               and the property variable's position
+     */
+    private function blockPropertiesIn(array $tokens): array
+    {
+        $found = [];
+        $count = count($tokens);
+
+        for ($at = 0; $at < $count; $at++) {
+            if (!$tokens[$at]->is(T_VARIABLE)) {
+                continue;
+            }
+
+            $equals = $this->nextMeaningful($tokens, $at);
+
+            if ($equals === null || $tokens[$equals]->text !== '=') {
+                continue;
+            }
+
+            $brace = $this->nextMeaningful($tokens, $equals);
+
+            if ($brace === null || $tokens[$brace]->text !== '{') {
+                continue;
+            }
+
+            // A property has a visibility in front, possibly with a type
+            // between them. An assignment in a body has neither, and is a
+            // block literal, which is not this feature yet.
+            $before = $this->previous($tokens, $at);
+
+            if ($before !== null && $tokens[$before]->is(T_STRING)) {
+                $before = $this->previous($tokens, $before);
+            }
+
+            if ($before === null || !$tokens[$before]->is([T_PUBLIC, T_PROTECTED, T_PRIVATE])) {
+                continue;
+            }
+
+            $found[] = [$tokens[$before]->pos, $tokens[$at]->pos];
+        }
+
+        return $found;
+    }
+
+    /**
+     * Reads one block property, and says what method the compiler must write.
+     *
+     * @throws TypeSyntaxError When the block is not what it started to be
+     */
+    private function blockMethod(string $source, int $declStart, int $variableAt): BlockMethod
+    {
+        $cursor = new Cursor(substr($source, $variableAt), $variableAt);
+        $cursor->take(1);
+        $name = $cursor->takeName();
+
+        if ($name === null) {
+            throw new TypeSyntaxError('Expected the property a block hangs on.', $cursor->offset());
+        }
+
+        $cursor->skipSpace();
+        $cursor->take(1); // =
+        $cursor->skipSpace();
+        $cursor->take(1); // {
+        $cursor->skipSpace();
+
+        // Parameters, where the block declares any, are the call's own. The
+        // object is never among them: the arms match $this.
+        $parameters = [];
+
+        if ($cursor->looksAt('$')) {
+            while (true) {
+                $cursor->take(1);
+                $parameter = $cursor->takeName();
+
+                if ($parameter === null) {
+                    throw new TypeSyntaxError('Expected a name after the dollar.', $cursor->offset());
+                }
+
+                $parameters[] = $parameter;
+                $cursor->skipSpace();
+
+                if ($cursor->looksAt(',')) {
+                    $cursor->take(1);
+                    $cursor->skipSpace();
+
+                    continue;
+                }
+
+                break;
+            }
+
+            if (!$cursor->looksAt('=>')) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected "=>" after the block parameters, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $cursor->take(2);
+        }
+
+        $armsStart = $cursor->offset();
+        $armsEnd = $this->closeOfBlock($source, $armsStart);
+
+        if ($armsEnd === null) {
+            throw new TypeSyntaxError('Expected "}" to close the block.', $cursor->offset());
+        }
+
+        $cursor->take($armsEnd - $armsStart + 1);
+        $cursor->skipSpace();
+
+        if (!$cursor->looksAt(';')) {
+            throw new TypeSyntaxError(
+                sprintf('Expected ";" after the block, found %s.', $cursor->describeHere()),
+                $cursor->offset()
+            );
+        }
+
+        $cursor->take(1);
+
+        return new BlockMethod(
+            $name,
+            $parameters,
+            trim(substr($source, $armsStart, $armsEnd - $armsStart)),
+            new Region($declStart, $cursor->offset())
+        );
+    }
+
+    /**
+     * Where the block opened at the current depth closes, counting braces.
+     */
+    private function closeOfBlock(string $source, int $at): ?int
+    {
+        $depth = 1;
+
+        for ($length = strlen($source); $at < $length; $at++) {
+            $depth += match ($source[$at]) {
+                '{' => 1,
+                '}' => -1,
+                default => 0,
+            };
+
+            if ($depth === 0) {
+                return $at;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<PhpToken> $tokens
+     */
+    private function nextMeaningful(array $tokens, int $at): ?int
+    {
+        for ($at++; $at < count($tokens); $at++) {
+            if (!$tokens[$at]->is(T_WHITESPACE)) {
+                return $at;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<BlockMethod> $blockMethods
+     */
+    private function insideABlockMethod(array $blockMethods, int $at): bool
+    {
+        foreach ($blockMethods as $method) {
+            if ($method->region->covers($at)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

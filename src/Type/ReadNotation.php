@@ -30,6 +30,8 @@ final class ReadNotation
      *                                               text as its own, the same length by construction
      * @param list<ClassSynthesis>    $syntheses     Classes the compiler has to write, the reader
      *                                               having only declared them
+     * @param list<BlockMethod>       $blockMethods  Methods written as block properties, for the
+     *                                               compiler to write as the methods they mean
      */
     public function __construct(
         public readonly array $types,
@@ -39,6 +41,7 @@ final class ReadNotation
         public readonly array $erasures = [],
         public readonly array $substitutions = [],
         public readonly array $syntheses = [],
+        public readonly array $blockMethods = [],
     ) {
     }
 

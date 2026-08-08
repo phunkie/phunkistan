@@ -180,6 +180,37 @@ describe("Notation", function () {
         expect($found->headers[0]->parameters[0]->name)->toBe('T');
     });
 
+    // A block property is a method written as a value. The object it is
+    // called through is never a parameter: the arms match $this, and any
+    // parameters the block declares are the call's own arguments. None of it
+    // is PHP, so the whole declaration stands in as spaces, and what the
+    // compiler needs to write the method travels in the record: name,
+    // parameters, and the arms as the reader wrote them.
+    it("reads a block property that is only a match", function () use ($read) {
+        $found = $read('class Option { public Block $get = {
+            Some($v) => $v,
+            None     => throw new RuntimeException("no")
+        }; }');
+
+        expect(count($found->blockMethods))->toBe(1);
+
+        $method = $found->blockMethods[0];
+
+        expect($method->name)->toBe('get');
+        expect($method->parameters)->toBe([]);
+        expect($method->arms)->toContain('Some($v) => $v');
+        expect($found->php)->not()->toContain('$get');
+    });
+
+    it("reads a block property whose parameters are the call's own", function () use ($read) {
+        $found = $read('class Option { public Block $getOrElse = { $default =>
+            Some($v) => $v,
+            None     => $default
+        }; }');
+
+        expect($found->blockMethods[0]->parameters)->toBe(['default']);
+    });
+
     // A variadic is `...`, and a single `.` is concatenation. Reading one as
     // the other made `[(FOO) => BAR . 'x']` a callable type, and the compiler,
     // which removes what this says it found, took a working array apart.
