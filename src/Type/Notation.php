@@ -88,8 +88,10 @@ final class Notation
         $syntheses = [];
 
         foreach ($this->bodylessClassesIn($tokens) as [$declStart, $classAt]) {
+            $scrub = [];
+
             try {
-                $synthesis = $this->synthesis($source, $declStart, $classAt, $types, $headers);
+                $synthesis = $this->synthesis($source, $declStart, $classAt, $types, $headers, $scrub);
             } catch (TypeSyntaxError $error) {
                 $errors[] = new TypeSyntaxError($error->getMessage(), $error->offset, $declStart);
 
@@ -102,10 +104,23 @@ final class Notation
 
             $syntheses[] = $synthesis;
 
-            // Spaces up to, but not including, the semicolon: alone it is an
-            // empty statement, so PHP parses a file in which this class simply
-            // does not exist. A class with no body has no bodies to promise.
-            $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to - 1);
+            if ($synthesis->bodyOpen === null) {
+                // Spaces up to, but not including, the semicolon: alone it is
+                // an empty statement, so PHP parses a file in which this class
+                // simply does not exist. No body, no bodies to promise.
+                $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to - 1);
+
+                continue;
+            }
+
+            // Braces came back, so the class stays in the source: the clause
+            // goes, and so do the header's brackets and the parent's
+            // arguments, which the synthesis read and therefore blanks.
+            $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to);
+
+            foreach ($scrub as $region) {
+                $blanked = $this->blank($blanked, $region->from, $region->to);
+            }
         }
 
         // Block properties next, for the same reason: their arms are theirs,
@@ -424,7 +439,9 @@ final class Notation
                 continue;
             }
 
-            if (!$this->endsWithoutBody($tokens, $at)) {
+            $ending = $this->endingOf($tokens, $at);
+
+            if ($ending === null) {
                 continue;
             }
 
@@ -435,23 +452,33 @@ final class Notation
     }
 
     /**
-     * Whether a declaration reaches a semicolon before it reaches a body.
+     * How a class declaration ends, where that makes it notation at all.
+     *
+     * A semicolon is the bodyless form. A body is only notation when a
+     * constructor clause sits in the head, a plain PHP class being none of
+     * this grammar's business.
      *
      * @param list<PhpToken> $tokens
      */
-    private function endsWithoutBody(array $tokens, int $at): bool
+    private function endingOf(array $tokens, int $at): ?string
     {
+        $clause = false;
+
         for ($at++; $at < count($tokens); $at++) {
+            if ($tokens[$at]->text === '(') {
+                $clause = true;
+            }
+
             if ($tokens[$at]->text === '{') {
-                return false;
+                return $clause ? '{' : null;
             }
 
             if ($tokens[$at]->text === ';') {
-                return true;
+                return ';';
             }
         }
 
-        return false;
+        return null;
     }
 
     /**
@@ -480,7 +507,7 @@ final class Notation
      *
      * @throws TypeSyntaxError When the declaration is not what it started to be
      */
-    private function synthesis(string $source, int $declStart, int $classAt, array &$types, array &$headers): ?ClassSynthesis
+    private function synthesis(string $source, int $declStart, int $classAt, array &$types, array &$headers, array &$scrub = []): ?ClassSynthesis
     {
         $cursor = new Cursor(substr($source, $classAt), $classAt);
         $cursor->take(strlen('class'));
@@ -497,15 +524,25 @@ final class Notation
         $bound = [];
 
         if ($cursor->looksAt('<')) {
+            $bracketsFrom = $cursor->offset();
             $parameters = $this->parser->parameters($cursor);
             $headers[] = new DeclarationHeader($name, $parameters, new Region($nameStart, $cursor->offset()));
+            $scrub[] = new Region($bracketsFrom, $cursor->offset());
 
             foreach ($parameters as $parameter) {
                 $bound[] = $parameter->name;
             }
         }
 
+        $clauseFrom = null;
+        $cursor->skipSpace();
+
+        if ($cursor->looksAt('(')) {
+            $clauseFrom = $cursor->offset();
+        }
+
         $constructed = $this->constructorParameters($cursor, $types, $bound);
+        $clause = $clauseFrom === null ? null : new Region($clauseFrom, $cursor->offset());
 
         $cursor->skipSpace();
         $parent = null;
@@ -515,13 +552,24 @@ final class Notation
             $type = $this->parser->type($cursor);
             $types[] = $type;
             $parent = $this->phpNameOf($type, []);
+
+            // The parent keeps its name, as any use does, and its arguments go.
+            $scrub[] = new Region($type->region()->from + strlen((string) $parent), $type->region()->to);
         }
 
         $cursor->skipSpace();
 
+        if ($cursor->looksAt('{')) {
+            if ($clause === null) {
+                return null;
+            }
+
+            return new ClassSynthesis($head, $parent, $constructed, $clause, $cursor->offset());
+        }
+
         if (!$cursor->looksAt(';')) {
             throw new TypeSyntaxError(
-                sprintf('Expected ";" to close a bodyless class, found %s.', $cursor->describeHere()),
+                sprintf('Expected ";" or a body to close the class, found %s.', $cursor->describeHere()),
                 $cursor->offset()
             );
         }
@@ -614,6 +662,12 @@ final class Notation
     {
         foreach ($syntheses as $synthesis) {
             if ($synthesis->region->covers($at)) {
+                return true;
+            }
+
+            // A body-form synthesis read its header and its parent itself,
+            // so everything up to the body's brace is its ground too.
+            if ($synthesis->bodyOpen !== null && $at < $synthesis->bodyOpen && $at >= $synthesis->region->from) {
                 return true;
             }
         }

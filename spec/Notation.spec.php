@@ -173,6 +173,32 @@ describe("Notation", function () {
         expect($parameters[1]->phpType)->toBe('AccountHolder');
     });
 
+    // Braces come back the moment there is something to put in them. The
+    // constructor clause is still notation, so it blanks and its parameters
+    // travel in the synthesis, but the class itself stays in the source: only
+    // the clause region is the compiler's to rewrite, and bodyOpen says where
+    // the generated members go.
+    it("reads a primary constructor on a class that keeps a body", function () {
+        $source = '<?php final class Some<T>(T $value) extends Option<T> { public function x() { return 1; } }';
+        $found = (new Notation())->readFrom($source);
+
+        expect(count($found->syntheses))->toBe(1);
+
+        $synthesis = $found->syntheses[0];
+
+        expect($synthesis->parameters[0]->name)->toBe('value');
+        expect($synthesis->bodyOpen)->not()->toBe(null);
+        expect($found->php)->toContain('final class Some')
+            ->toContain('extends Option')
+            ->toContain('public function x()')
+            ->not()->toContain('$value)')
+            ->not()->toContain('<T>');
+        expect(substr($found->php, $synthesis->bodyOpen, 1))->toBe('{');
+
+        // The whole point of a stand-in: PHP can read it.
+        token_get_all($found->php, TOKEN_PARSE);
+    });
+
     it("still declares the parameters a bodyless header binds", function () {
         $found = (new Notation())->readFrom('<?php final class Some<T>(T $value) extends Option<T>;');
 

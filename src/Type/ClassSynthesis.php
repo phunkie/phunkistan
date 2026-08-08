@@ -34,13 +34,19 @@ final class ClassSynthesis
      * @param string                    $head       Modifiers, keyword and name, as written
      * @param string|null               $parent     Parent the class extends, erased of arguments
      * @param list<SynthesisParameter>  $parameters What the primary constructor takes
-     * @param Region                    $region     The whole declaration, semicolon included
+     * @param Region                    $region     What the compiler rewrites: the whole
+     *                                              declaration when there is no body, only
+     *                                              the constructor clause when there is one
+     * @param int|null                  $bodyOpen   Where the body's brace is, when braces
+     *                                              came back: the generated members go just
+     *                                              inside it. Null for the bodyless form.
      */
     public function __construct(
         public readonly string $head,
         public readonly ?string $parent,
         public readonly array $parameters,
         public readonly Region $region,
+        public readonly ?int $bodyOpen = null,
     ) {
     }
 }
