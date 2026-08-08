@@ -228,6 +228,19 @@ describe("Notation", function () {
         expect($found->php)->not()->toContain('$get');
     });
 
+    // The initializer declares the type: a property whose default is a block
+    // IS a Block, so writing the word is optional and the shape is the rule.
+    it("reads a block property that never wrote the word Block", function () use ($read) {
+        $found = $read('class Option { public $isEmpty = {
+            Some($v) => false,
+            None     => true
+        }; }');
+
+        expect(count($found->blockMethods))->toBe(1);
+        expect($found->blockMethods[0]->name)->toBe('isEmpty');
+        expect($found->php)->not()->toContain('$isEmpty');
+    });
+
     it("reads a block property whose parameters are the call's own", function () use ($read) {
         $found = $read('class Option { public Block $getOrElse = { $default =>
             Some($v) => $v,
