@@ -644,8 +644,11 @@ final class Notation
     {
         $parameters = [];
 
+        // By the name the head ends with, not by region: the braces-back
+        // form's region is only the constructor clause, which starts after
+        // the name the attribute knows.
         foreach ($syntheses as $synthesis) {
-            if ($synthesis->region->from <= $classNameAt && $classNameAt <= $synthesis->region->to) {
+            if (str_ends_with($synthesis->head, ' ' . $className)) {
                 $parameters = $synthesis->parameters;
             }
         }

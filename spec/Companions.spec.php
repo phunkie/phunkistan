@@ -27,6 +27,15 @@ describe("Companion notation", function () {
         expect($companion->parameters[0]->phpType)->toBe(null);
     });
 
+    // The braces-back form's synthesis region is only the constructor clause,
+    // which starts after the class name; the attribute still has to find it.
+    it("finds the parameters when the braces came back", function () use ($read) {
+        $found = $read("#[Companion]\nfinal class Some<T>(T \$value) extends Option<T>\n{\n    public function isDefined(): bool\n    {\n        return true;\n    }\n}");
+
+        expect(count($found->companions[0]->parameters))->toBe(1);
+        expect($found->companions[0]->parameters[0]->name)->toBe('value');
+    });
+
     it("keeps the PHP type a parameter promised", function () use ($read) {
         $found = $read("#[Companion]\nfinal class Account(Balance \$balance);");
 
