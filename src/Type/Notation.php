@@ -504,6 +504,8 @@ final class Notation
      *
      * @param list<Type>              $types   Uses found on the way, appended to
      * @param list<DeclarationHeader> $headers Headers found on the way, appended to
+     * @param list<Region>            $scrub   Regions the synthesis read and must
+     *                                         therefore blank, appended to
      *
      * @throws TypeSyntaxError When the declaration is not what it started to be
      */
