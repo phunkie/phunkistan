@@ -82,6 +82,32 @@ final class Notation
         $substitutions = [];
         $blanked = $source;
 
+        // Bodyless classes first, because everything inside one belongs to it:
+        // its parameters, its parent, its own semicolon. The main loop is told
+        // to pass over their ground.
+        $syntheses = [];
+
+        foreach ($this->bodylessClassesIn($tokens) as [$declStart, $classAt]) {
+            try {
+                $synthesis = $this->synthesis($source, $declStart, $classAt, $types, $headers);
+            } catch (TypeSyntaxError $error) {
+                $errors[] = new TypeSyntaxError($error->getMessage(), $error->offset, $declStart);
+
+                continue;
+            }
+
+            if ($synthesis === null) {
+                continue;
+            }
+
+            $syntheses[] = $synthesis;
+
+            // Spaces up to, but not including, the semicolon: alone it is an
+            // empty statement, so PHP parses a file in which this class simply
+            // does not exist. A class with no body has no bodies to promise.
+            $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to - 1);
+        }
+
         $read = 0;
 
         foreach ($this->notationIn($tokens) as [$keep, $from, $at, $isHeader, $keyword]) {
@@ -90,6 +116,10 @@ final class Notation
             // them again says the same thing twice, and when the notation is
             // broken it says the same mistake twice.
             if ($at < $read) {
+                continue;
+            }
+
+            if ($this->insideASynthesis($syntheses, $at)) {
                 continue;
             }
 
@@ -162,7 +192,231 @@ final class Notation
             $blanked = substr_replace($blanked, self::STANDS_IN, $substitution->from, $substitution->to - $substitution->from);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions);
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses);
+    }
+
+    /**
+     * Every class declaration that ends in a semicolon rather than a body.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return list<array{int, int}> Declaration start and the class keyword's
+     *                               position, the first walking back over the
+     *                               modifiers the head keeps
+     */
+    private function bodylessClassesIn(array $tokens): array
+    {
+        $found = [];
+        $count = count($tokens);
+
+        for ($at = 0; $at < $count; $at++) {
+            if (!$tokens[$at]->is(T_CLASS)) {
+                continue;
+            }
+
+            // `Foo::class` is a constant fetch and `new class` has no name a
+            // declaration could be addressed to.
+            $before = $this->previous($tokens, $at);
+
+            if ($before !== null && $tokens[$before]->is([T_DOUBLE_COLON, T_NEW])) {
+                continue;
+            }
+
+            if (!$this->endsWithoutBody($tokens, $at)) {
+                continue;
+            }
+
+            $found[] = [$this->declarationStart($tokens, $at), $tokens[$at]->pos];
+        }
+
+        return $found;
+    }
+
+    /**
+     * Whether a declaration reaches a semicolon before it reaches a body.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function endsWithoutBody(array $tokens, int $at): bool
+    {
+        for ($at++; $at < count($tokens); $at++) {
+            if ($tokens[$at]->text === '{') {
+                return false;
+            }
+
+            if ($tokens[$at]->text === ';') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Where a declaration begins, its modifiers included.
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private function declarationStart(array $tokens, int $at): int
+    {
+        $start = $tokens[$at]->pos;
+
+        while (($before = $this->previous($tokens, $at)) !== null
+            && $tokens[$before]->is([T_FINAL, T_ABSTRACT, T_READONLY])) {
+            $start = $tokens[$before]->pos;
+            $at = $before;
+        }
+
+        return $start;
+    }
+
+    /**
+     * Reads one bodyless declaration, and says what the compiler must write.
+     *
+     * @param list<Type>              $types   Uses found on the way, appended to
+     * @param list<DeclarationHeader> $headers Headers found on the way, appended to
+     *
+     * @throws TypeSyntaxError When the declaration is not what it started to be
+     */
+    private function synthesis(string $source, int $declStart, int $classAt, array &$types, array &$headers): ?ClassSynthesis
+    {
+        $cursor = new Cursor(substr($source, $classAt), $classAt);
+        $cursor->take(strlen('class'));
+        $cursor->skipSpace();
+
+        $nameStart = $cursor->offset();
+        $name = $cursor->takeName();
+
+        if ($name === null) {
+            return null;
+        }
+
+        $head = trim((string) preg_replace('/\s+/', ' ', substr($source, $declStart, $cursor->offset() - $declStart)));
+        $bound = [];
+
+        if ($cursor->looksAt('<')) {
+            $parameters = $this->parser->parameters($cursor);
+            $headers[] = new DeclarationHeader($name, $parameters, new Region($nameStart, $cursor->offset()));
+
+            foreach ($parameters as $parameter) {
+                $bound[] = $parameter->name;
+            }
+        }
+
+        $constructed = $this->constructorParameters($cursor, $types, $bound);
+
+        $cursor->skipSpace();
+        $parent = null;
+
+        if ($cursor->looksAt('extends')) {
+            $cursor->take(strlen('extends'));
+            $type = $this->parser->type($cursor);
+            $types[] = $type;
+            $parent = $this->phpNameOf($type, []);
+        }
+
+        $cursor->skipSpace();
+
+        if (!$cursor->looksAt(';')) {
+            throw new TypeSyntaxError(
+                sprintf('Expected ";" to close a bodyless class, found %s.', $cursor->describeHere()),
+                $cursor->offset()
+            );
+        }
+
+        $cursor->take(1);
+
+        return new ClassSynthesis($head, $parent, $constructed, new Region($declStart, $cursor->offset()));
+    }
+
+    /**
+     * The primary constructor's parameters, where a declaration has one.
+     *
+     * @param list<Type>   $types Uses found on the way, appended to
+     * @param list<string> $bound Type parameters the header bound
+     *
+     * @throws TypeSyntaxError
+     *
+     * @return list<SynthesisParameter>
+     */
+    private function constructorParameters(Cursor $cursor, array &$types, array $bound): array
+    {
+        $cursor->skipSpace();
+
+        if (!$cursor->looksAt('(')) {
+            return [];
+        }
+
+        $cursor->take(1);
+        $cursor->skipSpace();
+        $parameters = [];
+
+        while (!$cursor->looksAt(')')) {
+            $type = $this->parser->type($cursor);
+            $types[] = $type;
+            $cursor->skipSpace();
+
+            if (!$cursor->looksAt('$')) {
+                throw new TypeSyntaxError(
+                    sprintf('Expected a variable for the property, found %s.', $cursor->describeHere()),
+                    $cursor->offset()
+                );
+            }
+
+            $cursor->take(1);
+            $name = $cursor->takeName();
+
+            if ($name === null) {
+                throw new TypeSyntaxError('Expected a name after the dollar.', $cursor->offset());
+            }
+
+            $parameters[] = new SynthesisParameter($name, $this->phpNameOf($type, $bound));
+            $cursor->skipSpace();
+
+            if ($cursor->looksAt(',')) {
+                $cursor->take(1);
+                $cursor->skipSpace();
+            }
+        }
+
+        $cursor->take(1);
+
+        return $parameters;
+    }
+
+    /**
+     * The name PHP could still enforce for a type, if there is one.
+     *
+     * A type variable is nothing to PHP, and a function's shape has no name at
+     * all, so both answer null and the property they become is typed mixed.
+     *
+     * @param list<string> $bound Names that are type parameters here
+     */
+    private function phpNameOf(Type $type, array $bound): ?string
+    {
+        if ($type instanceof TypeApplication) {
+            $type = $type->constructor;
+        }
+
+        if (!$type instanceof TypeNameUse || in_array($type->name, $bound, true)) {
+            return null;
+        }
+
+        return $type->name;
+    }
+
+    /**
+     * @param list<ClassSynthesis> $syntheses
+     */
+    private function insideASynthesis(array $syntheses, int $at): bool
+    {
+        foreach ($syntheses as $synthesis) {
+            if ($synthesis->region->covers($at)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

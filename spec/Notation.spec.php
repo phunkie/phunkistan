@@ -134,6 +134,52 @@ describe("Notation", function () {
         expect(count($read('$a = MIN < MAX >> 2;')->errors))->toBe(0);
     });
 
+    // A bodyless class is all notation: PHP has no class that ends in a
+    // semicolon. It stands in as spaces ending at its own semicolon, an empty
+    // statement, and everything the compiler needs to write the real class
+    // travels in the synthesis: the head, the parent, and the parameters that
+    // become properties.
+    it("reads a bodyless class with a primary constructor", function () {
+        $source = '<?php final class Some<T>(T $value) extends Option<T>;';
+        $found = (new Notation())->readFrom($source);
+
+        expect(count($found->syntheses))->toBe(1);
+
+        $synthesis = $found->syntheses[0];
+
+        expect($synthesis->head)->toBe('final class Some');
+        expect($synthesis->parent)->toBe('Option');
+        expect(count($synthesis->parameters))->toBe(1);
+        expect($synthesis->parameters[0]->name)->toBe('value');
+        expect($synthesis->parameters[0]->phpType)->toBe(null);
+        expect($found->php)->toBe('<?php' . str_repeat(' ', strlen($source) - strlen('<?php') - 1) . ';');
+    });
+
+    it("reads a bodyless class that only extends", function () {
+        $found = (new Notation())->readFrom('<?php final class None extends Option;');
+
+        expect(count($found->syntheses))->toBe(1);
+        expect($found->syntheses[0]->head)->toBe('final class None');
+        expect($found->syntheses[0]->parent)->toBe('Option');
+        expect($found->syntheses[0]->parameters)->toBe([]);
+    });
+
+    it("keeps a concrete parameter type for PHP in a synthesis", function () {
+        $found = (new Notation())->readFrom('<?php class Account(Balance $balance, AccountHolder $holder);');
+
+        $parameters = $found->syntheses[0]->parameters;
+
+        expect($parameters[0]->phpType)->toBe('Balance');
+        expect($parameters[1]->phpType)->toBe('AccountHolder');
+    });
+
+    it("still declares the parameters a bodyless header binds", function () {
+        $found = (new Notation())->readFrom('<?php final class Some<T>(T $value) extends Option<T>;');
+
+        expect(count($found->headers))->toBe(1);
+        expect($found->headers[0]->parameters[0]->name)->toBe('T');
+    });
+
     // A variadic is `...`, and a single `.` is concatenation. Reading one as
     // the other made `[(FOO) => BAR . 'x']` a callable type, and the compiler,
     // which removes what this says it found, took a working array apart.

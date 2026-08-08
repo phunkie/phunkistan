@@ -28,6 +28,8 @@ final class ReadNotation
      * @param list<Region>            $erasures      What the compiler should remove, in source order
      * @param list<Region>            $substitutions Where the compiler should adopt the stand-in's
      *                                               text as its own, the same length by construction
+     * @param list<ClassSynthesis>    $syntheses     Classes the compiler has to write, the reader
+     *                                               having only declared them
      */
     public function __construct(
         public readonly array $types,
@@ -36,6 +38,7 @@ final class ReadNotation
         public readonly string $php,
         public readonly array $erasures = [],
         public readonly array $substitutions = [],
+        public readonly array $syntheses = [],
     ) {
     }
 
