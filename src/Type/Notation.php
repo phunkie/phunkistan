@@ -121,6 +121,13 @@ final class Notation
             // whole declaration and needs none.
             $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to);
 
+            // The deriving clause is blanked but not erased: the compiler
+            // rewrites that ground as the implements it grants, rather than
+            // deleting it.
+            if ($synthesis->derivingRegion !== null) {
+                $blanked = $this->blank($blanked, $synthesis->derivingRegion->from, $synthesis->derivingRegion->to);
+            }
+
             foreach ($scrub as $region) {
                 $blanked = $this->blank($blanked, $region->from, $region->to);
                 $erasures[] = $region;
@@ -144,6 +151,14 @@ final class Notation
             // empty statement, and the method this becomes is the compiler's
             // to write.
             $blanked = $this->blank($blanked, $method->region->from, $method->region->to);
+        }
+
+        // Deriving clauses on plain heads, blanked the same way and carried
+        // whole: what they grant is the compiler's to write.
+        $derivings = $this->derivingClausesIn($tokens);
+
+        foreach ($derivings as $deriving) {
+            $blanked = $this->blank($blanked, $deriving->region->from, $deriving->region->to);
         }
 
         $read = 0;
@@ -243,7 +258,7 @@ final class Notation
             }
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses, $blockMethods, $companions);
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses, $blockMethods, $companions, $derivings);
     }
 
     /**
@@ -493,6 +508,153 @@ final class Notation
             if ($tokens[$at]->text === ';') {
                 return ';';
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every deriving clause on a plain head.
+     *
+     * A synthesis reads its own clause, so this walks past anything with a
+     * constructor clause, and past anything that is not a class head at all:
+     * the walk back from the keyword must reach `class` over nothing but
+     * names, commas, brackets and the extends and implements words.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return list<DerivingSynthesis>
+     */
+    private function derivingClausesIn(array $tokens): array
+    {
+        $found = [];
+        $count = count($tokens);
+
+        for ($at = 0; $at < $count; $at++) {
+            if (!$tokens[$at]->is(T_STRING) || $tokens[$at]->text !== 'deriving') {
+                continue;
+            }
+
+            $head = $this->headBehind($tokens, $at);
+
+            if ($head === null) {
+                continue;
+            }
+
+            [$class, $joins] = $head;
+            [$powers, $to, $i] = $this->powersAfter($tokens, $at);
+
+            if ($powers === [] || $to === null) {
+                continue;
+            }
+
+            // The body's brace is where the powers' methods go; a semicolon
+            // first means a bodyless synthesis already owns this clause.
+            $bodyOpen = null;
+
+            for (; $i < $count; $i++) {
+                if ($tokens[$i]->text === '{') {
+                    $bodyOpen = $tokens[$i]->pos;
+
+                    break;
+                }
+
+                if ($tokens[$i]->text === ';') {
+                    break;
+                }
+            }
+
+            if ($bodyOpen === null) {
+                continue;
+            }
+
+            $found[] = new DerivingSynthesis($class, $powers, new Region($tokens[$at]->pos, $to), $joins, $bodyOpen);
+        }
+
+        return $found;
+    }
+
+    /**
+     * The powers named after the keyword, and where they end.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return array{list<string>, int|null, int} Powers, end offset, next token
+     */
+    private function powersAfter(array $tokens, int $at): array
+    {
+        $count = count($tokens);
+        $powers = [];
+        $to = null;
+        $i = $at + 1;
+
+        while ($i < $count) {
+            while ($i < $count && $tokens[$i]->is([T_WHITESPACE, T_COMMENT])) {
+                $i++;
+            }
+
+            if ($i >= $count || !$this->readsAsAName($tokens[$i])) {
+                break;
+            }
+
+            $powers[] = $tokens[$i]->text;
+            $to = $tokens[$i]->pos + strlen($tokens[$i]->text);
+            $i++;
+
+            while ($i < $count && $tokens[$i]->is(T_WHITESPACE)) {
+                $i++;
+            }
+
+            if ($i < $count && $tokens[$i]->text === ',') {
+                $i++;
+
+                continue;
+            }
+
+            break;
+        }
+
+        return [$powers, $to, $i];
+    }
+
+    /**
+     * The class head a clause hangs off, walked to backwards.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return array{string, bool}|null Class name, and whether an implements
+     *                                  is already there to join
+     */
+    private function headBehind(array $tokens, int $at): ?array
+    {
+        $joins = false;
+        $count = count($tokens);
+
+        for ($i = $at - 1; $i >= 0; $i--) {
+            if ($tokens[$i]->is([T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_EXTENDS])
+                || in_array($tokens[$i]->text, [',', '<', '>'], true)) {
+                continue;
+            }
+
+            if ($tokens[$i]->is(T_IMPLEMENTS)) {
+                $joins = true;
+
+                continue;
+            }
+
+            if (!$tokens[$i]->is(T_CLASS)) {
+                return null;
+            }
+
+            for ($j = $i + 1; $j < $count; $j++) {
+                if ($tokens[$j]->is(T_WHITESPACE)) {
+                    continue;
+                }
+
+                return $this->readsAsAName($tokens[$j]) ? [$tokens[$j]->text, $joins] : null;
+            }
+
+            return null;
         }
 
         return null;
@@ -830,13 +992,15 @@ final class Notation
         }
 
         $cursor->skipSpace();
+        [$derivings, $derivingRegion] = $this->derivingClause($cursor);
+        $cursor->skipSpace();
 
         if ($cursor->looksAt('{')) {
             if ($clause === null) {
                 return null;
             }
 
-            return new ClassSynthesis($head, $parent, $constructed, $clause, $cursor->offset());
+            return new ClassSynthesis($head, $parent, $constructed, $clause, $cursor->offset(), $derivings, $derivingRegion);
         }
 
         if (!$cursor->looksAt(';')) {
@@ -848,7 +1012,47 @@ final class Notation
 
         $cursor->take(1);
 
-        return new ClassSynthesis($head, $parent, $constructed, new Region($declStart, $cursor->offset()));
+        return new ClassSynthesis($head, $parent, $constructed, new Region($declStart, $cursor->offset()), null, $derivings, $derivingRegion);
+    }
+
+    /**
+     * The deriving clause, where the head carries one.
+     *
+     * @throws TypeSyntaxError When the keyword is not followed by powers
+     *
+     * @return array{list<string>, Region|null} The powers, and where the clause stood
+     */
+    private function derivingClause(Cursor $cursor): array
+    {
+        if (!$cursor->looksAt('deriving')) {
+            return [[], null];
+        }
+
+        $from = $cursor->offset();
+        $cursor->take(strlen('deriving'));
+        $powers = [];
+
+        while (true) {
+            $cursor->skipSpace();
+            $power = $cursor->takeName();
+
+            if ($power === null) {
+                throw new TypeSyntaxError('Expected a power after "deriving".', $cursor->offset());
+            }
+
+            $powers[] = $power;
+            $cursor->skipSpace();
+
+            if ($cursor->looksAt(',')) {
+                $cursor->take(1);
+
+                continue;
+            }
+
+            break;
+        }
+
+        return [$powers, new Region($from, $cursor->offset())];
     }
 
     /**

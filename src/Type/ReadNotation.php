@@ -34,6 +34,8 @@ final class ReadNotation
      *                                               compiler to write as the methods they mean
      * @param list<CompanionSynthesis> $companions   Constructor functions the compiler has to
      *                                               write, because a class asked with #[Companion]
+     * @param list<DerivingSynthesis>  $derivings    Deriving clauses on plain heads, for the
+     *                                               compiler to rewrite as what they grant
      */
     public function __construct(
         public readonly array $types,
@@ -45,6 +47,7 @@ final class ReadNotation
         public readonly array $syntheses = [],
         public readonly array $blockMethods = [],
         public readonly array $companions = [],
+        public readonly array $derivings = [],
     ) {
     }
 
