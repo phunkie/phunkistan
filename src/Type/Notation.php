@@ -230,7 +230,20 @@ final class Notation
             $blanked = substr_replace($blanked, self::STANDS_IN, $substitution->from, $substitution->to - $substitution->from);
         }
 
-        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses, $blockMethods);
+        // Companions last: the attribute is legal PHP standing at its own
+        // offsets, so nothing above needed to know, and the mirror wants the
+        // parameters a synthesis has already read.
+        $companions = [];
+
+        foreach ($this->companionAttributesIn($tokens) as [$argsAt, $arguments, $classNameAt, $className]) {
+            try {
+                $companions[] = $this->companion($className, $classNameAt, $argsAt, $arguments, $syntheses);
+            } catch (TypeSyntaxError $error) {
+                $errors[] = $error;
+            }
+        }
+
+        return new ReadNotation($types, $headers, $errors, $blanked, $erasures, $substitutions, $syntheses, $blockMethods, $companions);
     }
 
     /**
@@ -483,6 +496,254 @@ final class Notation
         }
 
         return null;
+    }
+
+    /**
+     * Every `#[Companion(...)]` and the class it decorates.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return list<array{int, string, int, string}> Where the arguments start,
+     *                                               the arguments verbatim, and
+     *                                               the class name's position
+     *                                               and text
+     */
+    private function companionAttributesIn(array $tokens): array
+    {
+        $found = [];
+        $count = count($tokens);
+
+        for ($at = 0; $at < $count; $at++) {
+            if (!$tokens[$at]->is(T_ATTRIBUTE)) {
+                continue;
+            }
+
+            $i = $at + 1;
+
+            while ($i < $count && $tokens[$i]->is([T_WHITESPACE, T_COMMENT])) {
+                $i++;
+            }
+
+            if ($i >= $count || $tokens[$i]->text !== 'Companion') {
+                continue;
+            }
+
+            $argsAt = $tokens[$i]->pos;
+            $arguments = '';
+            $i++;
+
+            while ($i < $count && $tokens[$i]->is(T_WHITESPACE)) {
+                $i++;
+            }
+
+            if ($i < $count && $tokens[$i]->text === '(') {
+                $argsAt = $tokens[$i]->pos + 1;
+                $depth = 1;
+                $i++;
+
+                while ($i < $count && $depth > 0) {
+                    if ($tokens[$i]->text === '(') {
+                        $depth++;
+                    }
+
+                    if ($tokens[$i]->text === ')') {
+                        $depth--;
+                    }
+
+                    if ($depth > 0) {
+                        $arguments .= $tokens[$i]->text;
+                    }
+
+                    $i++;
+                }
+            }
+
+            $class = $this->decoratedClass($tokens, $i);
+
+            if ($class === null) {
+                continue;
+            }
+
+            $found[] = [$argsAt, $arguments, $class[0], $class[1]];
+        }
+
+        return $found;
+    }
+
+    /**
+     * The class an attribute decorates, walked to over whatever else may
+     * legally stand in between: the attribute's own close, neighbouring
+     * attributes, comments and modifiers.
+     *
+     * @param list<PhpToken> $tokens
+     *
+     * @return array{int, string}|null The class name's position and text
+     */
+    private function decoratedClass(array $tokens, int $i): ?array
+    {
+        $count = count($tokens);
+
+        while ($i < $count) {
+            if ($tokens[$i]->is([T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_FINAL, T_ABSTRACT, T_READONLY]) || $tokens[$i]->text === ']') {
+                $i++;
+
+                continue;
+            }
+
+            if ($tokens[$i]->is(T_ATTRIBUTE)) {
+                $depth = 1;
+                $i++;
+
+                while ($i < $count && $depth > 0) {
+                    if ($tokens[$i]->text === '[') {
+                        $depth++;
+                    }
+
+                    if ($tokens[$i]->text === ']') {
+                        $depth--;
+                    }
+
+                    $i++;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        if ($i >= $count || !$tokens[$i]->is(T_CLASS)) {
+            return null;
+        }
+
+        $i++;
+
+        while ($i < $count && $tokens[$i]->is(T_WHITESPACE)) {
+            $i++;
+        }
+
+        if ($i >= $count || !$this->readsAsAName($tokens[$i])) {
+            return null;
+        }
+
+        return [$tokens[$i]->pos, $tokens[$i]->text];
+    }
+
+    /**
+     * Reads one companion declaration from the attribute's own arguments.
+     *
+     * The mirror's parameters come from the synthesis that read the class's
+     * primary constructor; a plain head has none, which is exactly the class
+     * a recipe is for.
+     *
+     * @param list<ClassSynthesis> $syntheses
+     *
+     * @throws TypeSyntaxError When the arguments are not what the attribute takes
+     */
+    private function companion(string $className, int $classNameAt, int $argsAt, string $arguments, array $syntheses): CompanionSynthesis
+    {
+        $parameters = [];
+
+        foreach ($syntheses as $synthesis) {
+            if ($synthesis->region->from <= $classNameAt && $classNameAt <= $synthesis->region->to) {
+                $parameters = $synthesis->parameters;
+            }
+        }
+
+        $singleton = false;
+        $withArguments = true;
+        $variadic = null;
+        $nullable = null;
+
+        $cursor = new Cursor($arguments, $argsAt);
+        $cursor->skipSpace();
+
+        while (!$cursor->atEnd()) {
+            $name = $cursor->takeName();
+
+            if ($name === null || !$cursor->looksAt(':')) {
+                throw new TypeSyntaxError('Expected "name: value" inside "#[Companion(...)]".', $cursor->offset(), $argsAt);
+            }
+
+            $cursor->take(1);
+            $cursor->skipSpace();
+
+            match ($name) {
+                'singleton' => $singleton = $this->boolean($cursor, $name),
+                'withArguments' => $withArguments = $this->boolean($cursor, $name),
+                'variadic' => $variadic = $this->cases($cursor, $name),
+                'nullable' => $nullable = $this->cases($cursor, $name),
+                default => throw new TypeSyntaxError(sprintf('"#[Companion]" has no "%s" argument.', $name), $cursor->offset(), $argsAt),
+            };
+
+            $cursor->skipSpace();
+
+            if ($cursor->looksAt(',')) {
+                $cursor->take(1);
+                $cursor->skipSpace();
+            }
+        }
+
+        return new CompanionSynthesis($className, $parameters, $singleton, $withArguments, $variadic, $nullable);
+    }
+
+    /**
+     * @throws TypeSyntaxError When the value is not true or false
+     */
+    private function boolean(Cursor $cursor, string $argument): bool
+    {
+        $value = $cursor->takeName();
+
+        if ($value !== 'true' && $value !== 'false') {
+            throw new TypeSyntaxError(sprintf('"%s" takes true or false.', $argument), $cursor->offset(), $cursor->offset());
+        }
+
+        return $value === 'true';
+    }
+
+    /**
+     * A recipe's two cases: what builds, and what answers empty.
+     *
+     * @return list<string>
+     *
+     * @throws TypeSyntaxError When the list does not name exactly two cases
+     */
+    private function cases(Cursor $cursor, string $recipe): array
+    {
+        if (!$cursor->looksAt('[')) {
+            throw new TypeSyntaxError(sprintf('A "%s" recipe expects "[Case, Case]".', $recipe), $cursor->offset(), $cursor->offset());
+        }
+
+        $cursor->take(1);
+        $names = [];
+
+        while (true) {
+            $cursor->skipSpace();
+            $name = $cursor->takeName();
+
+            if ($name === null) {
+                break;
+            }
+
+            $names[] = $name;
+            $cursor->skipSpace();
+
+            if ($cursor->looksAt(',')) {
+                $cursor->take(1);
+
+                continue;
+            }
+
+            break;
+        }
+
+        if (!$cursor->looksAt(']') || count($names) !== 2) {
+            throw new TypeSyntaxError(sprintf('A "%s" recipe names two cases: what builds, and what answers empty.', $recipe), $cursor->offset(), $cursor->offset());
+        }
+
+        $cursor->take(1);
+
+        return $names;
     }
 
     /**
