@@ -115,11 +115,15 @@ final class Notation
 
             // Braces came back, so the class stays in the source: the clause
             // goes, and so do the header's brackets and the parent's
-            // arguments, which the synthesis read and therefore blanks.
+            // arguments, which the synthesis read and therefore blanks. For
+            // this form they are ordinary erasures too, the compiler's copy
+            // of the same judgement, where the bodyless form replaces the
+            // whole declaration and needs none.
             $blanked = $this->blank($blanked, $synthesis->region->from, $synthesis->region->to);
 
             foreach ($scrub as $region) {
                 $blanked = $this->blank($blanked, $region->from, $region->to);
+                $erasures[] = $region;
             }
         }
 
