@@ -329,52 +329,15 @@ final class Notation
         $cursor->take(1); // =
         $cursor->skipSpace();
         $cursor->take(1); // {
-        $cursor->skipSpace();
 
-        // Parameters, where the block declares any, are the call's own. The
-        // object is never among them: the arms match $this.
-        $parameters = [];
+        $bodyStart = $cursor->offset();
+        $bodyEnd = $this->closeOfBlock($source, $bodyStart);
 
-        if ($cursor->looksAt('$')) {
-            while (true) {
-                $cursor->take(1);
-                $parameter = $cursor->takeName();
-
-                if ($parameter === null) {
-                    throw new TypeSyntaxError('Expected a name after the dollar.', $cursor->offset());
-                }
-
-                $parameters[] = $parameter;
-                $cursor->skipSpace();
-
-                if ($cursor->looksAt(',')) {
-                    $cursor->take(1);
-                    $cursor->skipSpace();
-
-                    continue;
-                }
-
-                break;
-            }
-
-            if (!$cursor->looksAt('=>')) {
-                throw new TypeSyntaxError(
-                    sprintf('Expected "=>" after the block parameters, found %s.', $cursor->describeHere()),
-                    $cursor->offset()
-                );
-            }
-
-            $cursor->take(2);
-        }
-
-        $armsStart = $cursor->offset();
-        $armsEnd = $this->closeOfBlock($source, $armsStart);
-
-        if ($armsEnd === null) {
+        if ($bodyEnd === null) {
             throw new TypeSyntaxError('Expected "}" to close the block.', $cursor->offset());
         }
 
-        $cursor->take($armsEnd - $armsStart + 1);
+        $cursor->take($bodyEnd - $bodyStart + 1);
         $cursor->skipSpace();
 
         if (!$cursor->looksAt(';')) {
@@ -386,11 +349,28 @@ final class Notation
 
         $cursor->take(1);
 
+        $body = trim(substr($source, $bodyStart, $bodyEnd - $bodyStart));
+
+        // Parameters, where the block declares any, are the call's own. The
+        // object is never among them. Only a list of variables with an arrow
+        // after it is one: `$this->value` is a body that happens to start
+        // with a dollar, because no arrow ever follows it.
+        $parameters = [];
+
+        if (preg_match('/^(\$[A-Za-z_]\w*(?:\s*,\s*\$[A-Za-z_]\w*)*)\s*=>\s*(.*)$/s', $body, $split) === 1) {
+            $parameters = array_map(
+                static fn (string $parameter): string => ltrim(trim($parameter), '$'),
+                explode(',', $split[1])
+            );
+            $body = trim($split[2]);
+        }
+
         return new BlockMethod(
             $name,
             $parameters,
-            trim(substr($source, $armsStart, $armsEnd - $armsStart)),
-            new Region($declStart, $cursor->offset())
+            $body,
+            new Region($declStart, $cursor->offset()),
+            $this->kindOf($body)
         );
     }
 
@@ -572,6 +552,64 @@ final class Notation
         }
 
         return $found;
+    }
+
+    /**
+     * What a block body is: arms to match, statements to run, or an
+     * expression to answer.
+     */
+    private function kindOf(string $body): string
+    {
+        if ($this->hasTopLevelArrow($body)) {
+            return 'match';
+        }
+
+        return str_ends_with($body, ';') ? 'statements' : 'expression';
+    }
+
+    /**
+     * Whether an arm arrow sits at the body's own level, outside every
+     * bracket and every string, which is what makes the body a match.
+     */
+    private function hasTopLevelArrow(string $body): bool
+    {
+        $depth = 0;
+        $length = strlen($body);
+
+        for ($at = 0; $at < $length; $at++) {
+            $character = $body[$at];
+
+            if ($character === "'" || $character === '"') {
+                for ($at++; $at < $length && $body[$at] !== $character; $at++) {
+                    if ($body[$at] === '\\') {
+                        $at++;
+                    }
+                }
+
+                continue;
+            }
+
+            if (str_contains('([{', $character)) {
+                $depth++;
+
+                continue;
+            }
+
+            if (str_contains(')]}', $character)) {
+                $depth--;
+
+                continue;
+            }
+
+            // The spaceship ends in the same two characters; its lesser-than
+            // in front is what tells them apart.
+            if ($depth === 0 && $character === '=' && $at + 1 < $length && $body[$at + 1] === '>'
+                && ($at === 0 || $body[$at - 1] !== '<')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

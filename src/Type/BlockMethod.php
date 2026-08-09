@@ -33,14 +33,18 @@ final class BlockMethod
     /**
      * @param string       $name       Method name, the property's without its dollar
      * @param list<string> $parameters The call's own parameters, dollars stripped
-     * @param string       $arms       The match arms, verbatim
+     * @param string       $arms       The body, verbatim: arms when the kind is
+     *                                 match, otherwise the expression or statements
      * @param Region       $region     The whole declaration, semicolon included
+     * @param string       $kind       What the body is: "match" arms, one
+     *                                 "expression" to answer, or "statements" to run
      */
     public function __construct(
         public readonly string $name,
         public readonly array $parameters,
         public readonly string $arms,
         public readonly Region $region,
+        public readonly string $kind = 'match',
     ) {
     }
 }

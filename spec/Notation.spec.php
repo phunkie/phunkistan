@@ -248,6 +248,33 @@ describe("Notation", function () {
         }; }');
 
         expect($found->blockMethods[0]->parameters)->toBe(['default']);
+        expect($found->blockMethods[0]->kind)->toBe('match');
+    });
+
+    // A body with no arms is what it says: an expression to answer, or, when
+    // it opens with return, statements to run. `$this->value` must not read
+    // as a parameter, because no arrow ever follows it.
+    it("reads an expression-bodied block property", function () use ($read) {
+        $found = $read('class Some { public $get = { $this->value }; }');
+
+        expect($found->blockMethods[0]->kind)->toBe('expression');
+        expect($found->blockMethods[0]->parameters)->toBe([]);
+        expect($found->blockMethods[0]->arms)->toBe('$this->value');
+    });
+
+    it("reads parameters in front of an expression body", function () use ($read) {
+        $found = $read('class A { public $f = { $x => gettype($x) }; }');
+
+        expect($found->blockMethods[0]->parameters)->toBe(['x']);
+        expect($found->blockMethods[0]->kind)->toBe('expression');
+        expect($found->blockMethods[0]->arms)->toBe('gettype($x)');
+    });
+
+    it("keeps the statements of a body that opens with return", function () use ($read) {
+        $found = $read('class A { public $f = { $x => return gettype($x); }; }');
+
+        expect($found->blockMethods[0]->kind)->toBe('statements');
+        expect($found->blockMethods[0]->arms)->toBe('return gettype($x);');
     });
 
     // A variadic is `...`, and a single `.` is concatenation. Reading one as
